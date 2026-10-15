@@ -1,0 +1,146 @@
+/* Barra de cópia injetada em cima de cada anúncio da Biblioteca.
+   Tudo com prefixo .mn- e valores explícitos: o CSS do Facebook muda sem aviso
+   e herança de fonte/cor estragaria o painel. */
+
+.mn-cartao {
+  position: relative !important;
+  /* a barra é absoluta no topo: o respiro evita que ela cubra o
+     "Identificação da biblioteca" do próprio cartão */
+  padding-top: 36px !important;
+  outline: 2px solid #22c55e;
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
+.mn-barra,
+.mn-barra * { box-sizing: border-box; }
+
+.mn-barra {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font: 600 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #fff;
+}
+
+.mn-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: #2b3a4a;
+  color: #fff;
+  font: inherit;
+  letter-spacing: .04em;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+}
+
+.mn-btn:hover { background: #3a4c5f; }
+.mn-btn.mn-verde { background: #22c55e; }
+.mn-btn.mn-verde:hover { background: #16a34a; }
+.mn-btn svg { width: 13px; height: 13px; display: block; fill: currentColor; }
+
+.mn-menu {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  z-index: 10000;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 178px;
+}
+
+.mn-menu.mn-aberto { display: flex; }
+
+.mn-menu button {
+  text-align: left;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: #2b3a4a;
+  color: #fff;
+  font: 500 12px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+}
+
+.mn-menu button:hover { background: #22c55e; }
+
+/* Quanto tempo o anúncio já roda, ao lado dos botões. */
+.mn-tempo {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: #2b3a4a;
+  color: #cfe0f0;
+  font: 600 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+}
+
+/* 60 dias ou mais: oferta que aguenta escala, merece destaque. */
+.mn-tempo.mn-veterano { background: #14532d; color: #86efac; }
+.mn-tempo[hidden] { display: none; }
+
+/* Aviso curto de "copiado" — vive no body, fora do cartão. */
+.mn-aviso {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  padding: 9px 16px;
+  border-radius: 9px;
+  background: #2b3a4a;
+  color: #fff;
+  font: 600 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+  opacity: 0;
+  transition: opacity .16s;
+}
+
+.mn-aviso.mn-visivel { opacity: 1; }
+.mn-aviso.mn-erro { background: #ef4444; }
+
+/* Faixa que aparece enquanto a extensão está rolando a página. */
+.mn-coleta {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 999px;
+  background: #2b3a4a;
+  color: #fff;
+  font: 600 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .35);
+}
+
+.mn-coleta[hidden] { display: none; }
+
+.mn-coleta-parar {
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: #ef4444;
+  color: #fff;
+  font: 700 11px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.mn-coleta-parar:hover { background: #dc2626; }

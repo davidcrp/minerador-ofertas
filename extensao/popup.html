@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">⛏️ <span>minerador<b>.ofertas</b></span></div>
+  <div class="icones">
+    <button id="ir-dashboard" title="Abrir painel">🏠</button>
+    <button id="ir-config" title="Configurações">⚙️</button>
+  </div>
+</header>
+
+<!-- ---------------------------------------------------- login -->
+<section id="tela-login" hidden>
+  <label class="campo">Usuário
+    <input id="login-user" autocomplete="username">
+  </label>
+  <label class="campo">Senha
+    <input id="login-pass" type="password" autocomplete="current-password">
+  </label>
+  <label class="campo">Servidor
+    <input id="login-api" placeholder="https://minerador-ofertas-umber.vercel.app">
+  </label>
+  <button class="primario" id="btn-entrar">ENTRAR</button>
+  <p class="aviso" id="login-erro" hidden></p>
+</section>
+
+<!-- ---------------------------------------------------- principal -->
+<section id="tela-main" hidden>
+  <div class="linha-topo">
+    <button class="btn-vermelho" id="btn-sair">SAIR</button>
+    <button class="btn-verde" id="btn-planos">VER PLANOS</button>
+  </div>
+  <p class="usos">Usos restantes: <b id="usos">—</b></p>
+
+  <label class="campo">Nicho / palavra-chave
+    <div class="linha-termo">
+      <input id="termo" placeholder="ex: receitas fit, planilha, ebook">
+      <button id="btn-add-fila" title="Adicionar à fila">＋</button>
+    </div>
+  </label>
+
+  <label class="campo">💡 Ideia de produto
+    <div class="linha-termo">
+      <input id="ideia" placeholder="ex: produtos para o natal">
+      <button id="btn-ideia" title="Gerar palavras-chave a partir da ideia">✨</button>
+    </div>
+  </label>
+
+  <div class="fila ideias" id="ideias-caixa" hidden>
+    <div class="fila-topo">
+      <span>Palavras-chave: <b id="ideias-n">0</b> marcada(s)</span>
+      <button id="btn-ideias-fila" class="add">＋ adicionar à fila</button>
+    </div>
+    <div class="chips" id="ideias-chips"></div>
+    <p class="nota" id="ideias-fonte"></p>
+  </div>
+
+  <div class="fila" id="fila-caixa" hidden>
+    <div class="fila-topo">
+      <span>Fila: <b id="fila-n">0</b> termo(s)</span>
+      <button id="btn-limpar-fila">limpar</button>
+    </div>
+    <div class="chips" id="fila-chips"></div>
+  </div>
+
+  <div class="grupo">
+    <div class="rot">Quantidade de anúncios <span class="i" title="Mínimo de anúncios ativos para o anunciante entrar no resultado">ⓘ</span></div>
+    <div class="slider">
+      <input type="range" id="min-ads" min="1" max="50" value="2">
+      <input type="number" id="min-ads-n" min="1" max="50" value="2">
+      <span class="un">anúncios</span>
+    </div>
+  </div>
+
+  <div class="grupo">
+    <div class="rot">Tempo de atividade <span class="i" title="Mínimo de dias que o anúncio já está rodando">ⓘ</span></div>
+    <div class="slider">
+      <input type="range" id="min-dias" min="0" max="180" value="3">
+      <input type="number" id="min-dias-n" min="0" max="365" value="3">
+      <span class="un">dias</span>
+    </div>
+  </div>
+
+  <button class="item" id="tg-filtro">⚙️ Configurações de filtro <span class="i">ⓘ</span></button>
+  <div class="painel" id="painel-filtro" hidden>
+    <label class="campo-inline">País
+      <select id="pais">
+        <optgroup label="Português">
+          <option value="BR" selected>Brasil</option>
+          <option value="PT">Portugal</option>
+        </optgroup>
+        <optgroup label="Espanhol">
+          <option value="MX">México</option>
+          <option value="AR">Argentina</option>
+          <option value="CO">Colômbia</option>
+          <option value="CL">Chile</option>
+          <option value="PE">Peru</option>
+          <option value="EC">Equador</option>
+          <option value="UY">Uruguai</option>
+          <option value="ES">Espanha</option>
+        </optgroup>
+        <optgroup label="Outros">
+          <option value="US">Estados Unidos</option>
+          <option value="ALL">Todos</option>
+        </optgroup>
+      </select>
+    </label>
+    <label class="campo-inline">Idioma do anúncio
+      <select id="idioma">
+        <option value="">qualquer</option>
+        <option value="es">Espanhol</option>
+        <option value="pt">Português</option>
+        <option value="en">Inglês</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="usar-aba">
+      Usar a busca já aberta (não navegar a aba)</label>
+    <label class="check"><input type="checkbox" id="profunda">
+      Contar anúncios reais de cada anunciante
+      <span class="i" title="Abre uma aba extra e visita a página de cada anunciante, um por um. Demora e navega muito no Facebook.">ⓘ</span></label>
+    <p class="nota">A contagem real abre <b>uma aba extra</b> e passa por cada
+      anunciante. Sem ela, "anúncios ativos" é o que apareceu na busca.</p>
+    <label class="campo-inline">Máx. anunciantes varridos
+      <input type="number" id="max-anunciantes" value="8" min="1" max="30">
+    </label>
+  </div>
+
+  <div class="item toggle-linha">
+    <label class="switch"><input type="checkbox" id="auto"><span></span></label>
+    <span>Pesquisa automática <span class="i" title="Captura o que você abrir na Biblioteca, sem rolar a página">ⓘ</span></span>
+  </div>
+  <label class="check" style="margin:-4px 0 10px 2px"><input type="checkbox" id="auto-rolar">
+    Deixar a pesquisa automática rolar a página</label>
+
+  <button class="item" id="tg-pesquisa">⚙️ Configurações de pesquisa <span class="i">ⓘ</span></button>
+  <div class="painel" id="painel-pesquisa" hidden>
+    <label class="check"><input type="checkbox" id="painel-flutuante" checked>
+      Painel flutuante dentro da Biblioteca</label>
+    <label class="check"><input type="checkbox" id="abrir-sozinho" checked>
+      Abrir a extensão ao entrar na Biblioteca</label>
+    <label class="check"><input type="checkbox" id="abrir-painel">
+      Abrir o painel web ao terminar a pesquisa</label>
+    <label class="campo-inline">Máx. anúncios coletados
+      <input type="number" id="max-anuncios" value="150" min="10" max="500">
+    </label>
+    <label class="campo-inline">Tempo por pesquisa (s)
+      <input type="number" id="timeout" value="300" min="30" max="1800">
+    </label>
+    <label class="campo-inline">Rodadas sem novidade antes de parar
+      <input type="number" id="paradas" value="12" min="3" max="60">
+    </label>
+    <label class="campo-inline">Servidor
+      <input id="api-url" placeholder="https://minerador-ofertas-umber.vercel.app">
+    </label>
+  </div>
+
+  <button class="item" id="tg-sugestoes">✨ Sugestões de pesquisas <span class="i">ⓘ</span></button>
+  <div class="painel" id="painel-sugestoes" hidden>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <button class="primario" id="btn-pesquisar">▶ PESQUISAR</button>
+
+  <div class="auto-caixa">
+    <div class="rot">🤖 Mineração automática de low ticket
+      <span class="i" title="Fica buscando sozinho, uma busca atrás da outra, com palavras-chave que costumam achar low ticket (as que já renderam no seu minerador, datas comemorativas próximas e gatilhos como &quot;acesso imediato&quot;, &quot;pagamento único&quot;). Tudo vai para o minerador. Use o ■ PARAR para interromper.">ⓘ</span></div>
+    <div class="auto-linha">
+      <select id="auto-min">
+        <option value="5">5 min</option>
+        <option value="10" selected>10 min</option>
+        <option value="15">15 min</option>
+        <option value="30">30 min</option>
+      </select>
+      <button class="primario auto" id="btn-auto">▶ MINERAR SOZINHO</button>
+    </div>
+  </div>
+  <button class="item" id="btn-fotos" title="Visita na Biblioteca a página de cada anunciante sem foto e salva a capa (vídeo vira o quadro de capa). Não gasta usos.">🖼 Recuperar fotos que sumiram</button>
+  <label class="check" style="margin:-4px 0 10px 2px"><input type="checkbox" id="fotos-low" checked>
+    Só dos low ticket (até R$ 50 + checkout)</label>
+  <button class="primario perigo" id="btn-parar" hidden>■ PARAR AGORA</button>
+  <p class="status" id="status"></p>
+</section>
+
+<footer>
+  <span id="rodape">painel · biblioteca de anúncios</span>
+</footer>
+
+<script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+{
+  "manifest_version": 3,
+  "name": "Minerador de Ofertas — Ad Library",
+  "version": "1.5.2",
+  "description": "Pesquisa automática na Biblioteca de Anúncios do Facebook: anunciante, anúncios ativos, tempo rodando, destino e gateway.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.facebook.com/*",
+    "http://127.0.0.1:5010/*",
+    "http://localhost:5010/*"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Minerador de Ofertas"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.facebook.com/ads/library*"
+      ],
+      "js": [
+        "hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://*.facebook.com/ads/library*"
+      ],
+      "js": [
+        "content.js",
+        "overlay.js",
+        "painel.js"
+      ],
+      "css": [
+        "overlay.css",
+        "painel.css"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "popup.html",
+        "popup.css",
+        "popup.js"
+      ],
+      "matches": [
+        "*://*.facebook.com/*"
+      ]
+    }
+  ]
+}

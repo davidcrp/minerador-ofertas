@@ -1,0 +1,928 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minerador de Ofertas</title>
+<script>
+  // Antes do CSS pintar: escolha salva > preferência do sistema.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("mn_tema"); } catch (e) {}
+    if (!t) t = matchMedia("(prefers-color-scheme: dark)").matches ? "escuro" : "claro";
+    document.documentElement.dataset.tema = t;
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Tema claro: fundo cinza-azulado, cartões brancos com sombra leve e um
+     único destaque azul para número, ação e aba ativa. */
+  :root { --bg:#f5f7fb; --card:#ffffff; --card2:#f7f9fc; --linha:#e7ebf2;
+          --txt:#1b2333; --suave:#6f7a90; --fraco:#b9c1cf; --icone:#97a1b3; --copy:#4a5568;
+          --acc:#2563eb; --acc2:var(--acc2); --acc-borda:#cbdcff; --acc-sombra:rgba(37,99,235,.28);
+          --verde:#16a34a; --verde2:#e8f7ee; --verde-borda:#c6ebd4;
+          --amarelo:#f5a524; --amarelo2:var(--amarelo2); --amarelo-borda:var(--amarelo-borda); --amarelo-txt:var(--amarelo-txt);
+          --hover:#fafbfe; --vidro:var(--vidro); --aviso:#1b2333; --aviso-acao:#93b7ff;
+          --sombra:0 1px 2px rgba(16,24,40,.04), 0 4px 14px rgba(16,24,40,.06);
+          --sombra-forte:var(--sombra-forte);
+          color-scheme:light; }
+  /* Escuro: azul-marinho em vez de preto puro, cartão um degrau acima do fundo
+     e o azul de destaque um pouco mais claro para manter contraste. */
+  :root[data-tema="escuro"] { --bg:#0d1420; --card:#151e2d; --card2:#1b2638; --linha:#26334a;
+          --txt:#e6ecf5; --suave:#93a1b8; --fraco:#4a5872; --icone:#7f8da6; --copy:#b4c0d3;
+          --acc:#4f8cff; --acc2:#17284a; --acc-borda:#2a4475; --acc-sombra:rgba(79,140,255,.30);
+          --verde:#3ddc84; --verde2:#11291d; --verde-borda:#1f4d35;
+          --amarelo:#f7b84b; --amarelo2:#2d2410; --amarelo-borda:#5a4718; --amarelo-txt:#f3c66e;
+          --hover:#18233a; --vidro:rgba(21,30,45,.9); --aviso:#e6ecf5; --aviso-acao:#2563eb;
+          --sombra:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28);
+          --sombra-forte:0 2px 6px rgba(0,0,0,.35), 0 14px 32px rgba(0,0,0,.4);
+          color-scheme:dark; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font:14px/1.5 "Poppins", system-ui, -apple-system, Segoe UI, sans-serif; }
+  a { color:var(--acc); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+
+  /* ------------------------------------------------ topo */
+  header { display:flex; align-items:center; gap:22px; padding:0 28px; height:64px;
+           background:var(--card); border-bottom:1px solid var(--linha);
+           position:sticky; top:0; z-index:5; }
+  .logo { display:flex; align-items:center; gap:8px; font-weight:800; font-size:19px;
+          letter-spacing:-.02em; color:var(--txt); white-space:nowrap; }
+  .logo .marca { width:32px; height:32px; border-radius:9px; background:var(--acc);
+                 color:#fff; display:grid; place-items:center; font-size:16px; }
+  .logo b { color:var(--acc); }
+  .abas { display:flex; gap:4px; height:100%; }
+  .aba { background:none; border:0; border-bottom:3px solid transparent; color:var(--suave);
+         padding:0 14px; cursor:pointer; font:600 14px "Poppins", system-ui, sans-serif;
+         height:100%; }
+  .aba:hover { color:var(--txt); }
+  .aba.ativa { color:var(--acc); border-bottom-color:var(--acc); }
+  .aba span { background:var(--acc2); color:var(--acc); border-radius:999px;
+              padding:1px 7px; font-size:11px; margin-left:3px; }
+  header .sp { flex:1; }
+  header .quem { color:var(--suave); font-size:12px; text-align:right; line-height:1.3; }
+  header a.btn, header button.btn { color:var(--txt); font-size:12px; font-weight:600;
+        background:var(--card); border:1px solid var(--linha); border-radius:9px;
+        padding:7px 12px; cursor:pointer; font-family:inherit; }
+  header .btn:hover { border-color:var(--acc); color:var(--acc); text-decoration:none; }
+  header .btn.perigo:hover { background:var(--acc2); }
+  header .btn, .aba, header .quem { white-space:nowrap; }
+  @media (max-width:1180px) { header .quem { display:none; } header { gap:12px; } }
+  main { padding:24px 28px; max-width:1500px; margin:0 auto; }
+
+  /* ------------------------------------------------ filtros */
+  .filtros { display:grid; gap:14px 16px; align-items:end;
+             grid-template-columns:repeat(auto-fill, minmax(170px, 1fr));
+             background:var(--card); border-radius:16px; box-shadow:var(--sombra);
+             padding:18px 20px; margin-bottom:18px; }
+  .filtros label { display:flex; align-items:center; gap:6px; font-size:12px;
+                   font-weight:600; color:var(--txt); margin-bottom:6px; }
+  .filtros label i { font-style:normal; color:var(--acc); }
+  .filtros input, .filtros select { width:100%; padding:9px 11px; border-radius:9px;
+        border:1px solid var(--linha); background:var(--card2); color:var(--txt);
+        font:13px "Poppins", system-ui, sans-serif; outline:none; }
+  .filtros input:focus, .filtros select:focus { border-color:var(--acc); background:var(--card); }
+  .filtros .faixa { display:flex; gap:6px; }
+  .filtros .checks { grid-column:span 4; display:flex; flex-wrap:wrap; gap:6px 8px;
+                     align-self:center; padding-top:18px; }
+  .filtros .checks label { margin:0; font-weight:500; font-size:12px; color:var(--txt);
+        background:var(--card2); border:1px solid var(--linha); border-radius:999px;
+        padding:6px 11px; cursor:pointer; }
+  .filtros .checks label:has(input:checked) { background:var(--acc2); border-color:var(--acc);
+        color:var(--acc); }
+  .filtros .checks input { width:auto; accent-color:var(--acc); margin:0; }
+  .filtros .botoes { display:flex; gap:8px; justify-content:flex-end; grid-column:-3 / -1; }
+  .filtros button { padding:10px 18px; border:0; border-radius:999px; background:var(--acc);
+        color:#fff; font:600 13px "Poppins", system-ui, sans-serif; cursor:pointer;
+        box-shadow:0 4px 12px var(--acc-sombra); white-space:nowrap; }
+  .filtros button:hover { filter:brightness(1.05); }
+  .filtros button.preset { background:var(--card); color:var(--suave); box-shadow:none;
+        border:1px solid var(--linha); }
+  .filtros button.preset:hover { color:var(--acc); border-color:var(--acc); }
+
+  /* ------------------------------------------------ números do topo */
+  .cards { display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+           margin-bottom:18px; }
+  .card { background:var(--card); border-radius:14px; box-shadow:var(--sombra); padding:14px 18px; }
+  .card .n { font-size:26px; font-weight:700; color:var(--acc); line-height:1.2; }
+  .card .r { font-size:12px; color:var(--suave); }
+
+  /* ------------------------------------------------ barra de visualização */
+  .barra-visao { display:flex; align-items:center; gap:8px; margin:0 0 14px; flex-wrap:wrap; }
+  .barra-visao .titulo { font-weight:700; font-size:16px; margin-right:auto; }
+  .visao { background:var(--card); border:1px solid var(--linha); color:var(--suave);
+           padding:7px 13px; border-radius:9px; cursor:pointer;
+           font:600 12px "Poppins", system-ui, sans-serif; }
+  .visao.ativa { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .barra-visao select { background:var(--card); border:1px solid var(--linha); color:var(--txt);
+        padding:7px 10px; border-radius:9px; font:12px "Poppins", system-ui, sans-serif; }
+
+  /* ------------------------------------------------ tabela */
+  .wrap { overflow-x:auto; background:var(--card); border-radius:16px; box-shadow:var(--sombra); }
+  table { border-collapse:collapse; width:100%; min-width:1180px; }
+  th, td { padding:12px; text-align:left; border-bottom:1px solid var(--linha);
+           vertical-align:top; }
+  /* O scrollport do sticky é o .wrap (overflow-x:auto), não a página: com
+     top:57px o cabeçalho descia 57px e cobria a primeira linha. */
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--suave);
+       background:var(--card2); position:sticky; top:0; z-index:4; cursor:pointer;
+       user-select:none; font-weight:600; }
+  tr:hover td { background:var(--hover); }
+  td.num { font-variant-numeric:tabular-nums; font-weight:700; }
+  .nome { font-weight:600; }
+  .sub { color:var(--suave); font-size:12px; }
+  .tag { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px;
+         font-weight:600; border:1px solid var(--linha); color:var(--suave); background:var(--card); }
+  .tag.gw { background:var(--verde2); border-color:var(--verde-borda); color:var(--verde); }
+  .tag.real { background:var(--acc2); border-color:var(--acc-borda); color:var(--acc); }
+  .tag.rec { background:var(--amarelo2); border-color:var(--amarelo-borda); color:var(--amarelo-txt); }
+  .copy { max-width:330px; color:var(--suave); font-size:12px;
+          display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+          overflow:hidden; }
+  .vazio-msg { padding:48px; text-align:center; color:var(--suave); background:var(--card);
+               border-radius:16px; box-shadow:var(--sombra); }
+
+  /* display:flex explícito ganha do [hidden] do navegador — vale para toda
+     caixa flex/grid que é escondida por atributo */
+  .filtros[hidden], .barra-sel[hidden], .desfazer[hidden] { display:none; }
+  .estrela { background:none; border:0; cursor:pointer; font-size:16px; line-height:1;
+             color:var(--fraco); padding:0; }
+  .estrela.on, .estrela:hover { color:var(--amarelo); }
+  .excluir { background:none; border:0; cursor:pointer; font-size:15px; line-height:1;
+             color:var(--fraco); padding:0 2px; }
+  .excluir:hover { color:var(--acc); }
+  .foto, video.foto { width:64px; height:64px; border-radius:10px; object-fit:cover;
+          display:block; background:var(--card2); border:1px solid var(--linha); }
+  .foto-vazia { width:64px; height:64px; border-radius:10px; background:var(--card2);
+                border:1px dashed var(--linha); display:flex; align-items:center;
+                justify-content:center; color:var(--fraco); font-size:18px; }
+  .foto-rot { font-size:10px; color:var(--suave); margin-top:3px; text-align:center; }
+
+  /* ------------------------------------------------ cartões */
+  .grade { display:grid; gap:18px; }
+  .grade.g-cartoes { grid-template-columns:repeat(auto-fill, minmax(270px, 1fr));
+                     align-items:start; }
+  .grade.g-mural   { grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:12px; }
+
+  .cartao { background:var(--card); border-radius:16px; box-shadow:var(--sombra);
+            overflow:hidden; display:flex; flex-direction:column;
+            transition:box-shadow .15s, transform .15s; }
+  .cartao:hover { box-shadow:var(--sombra-forte);
+                  transform:translateY(-2px); }
+  .cartao .topo { display:flex; align-items:center; gap:10px; padding:14px 14px 0; }
+  .avatar { width:38px; height:38px; border-radius:50%; flex:0 0 auto; display:grid;
+            place-items:center; font-weight:700; font-size:14px; color:#fff; }
+  .cartao .quem { min-width:0; flex:1; }
+  .cartao .nome { font-size:13px; font-weight:600; line-height:1.25; white-space:nowrap;
+                  overflow:hidden; text-overflow:ellipsis; }
+  .cartao .visto { font-size:11px; color:var(--suave); white-space:nowrap; overflow:hidden;
+                   text-overflow:ellipsis; }
+  .cartao .acoes { display:flex; gap:4px; align-items:center; }
+  .cartao .acoes button { background:var(--card); border:1px solid var(--linha); border-radius:50%;
+                          width:28px; height:28px; cursor:pointer; color:var(--icone);
+                          font-size:13px; line-height:1; padding:0; }
+  .cartao .acoes button:hover { border-color:var(--acc); color:var(--acc); }
+  .cartao .acoes .estrela.on { color:var(--amarelo); border-color:var(--amarelo-borda); }
+  .cartao .corpo { padding:10px 14px 12px; display:flex; flex-direction:column; gap:3px; }
+  .cartao .total { font-size:22px; font-weight:700; color:var(--acc); line-height:1.2; }
+  .cartao .total small { font-size:12px; font-weight:600; color:var(--suave); margin-left:4px; }
+  .cartao .linha { font-size:12px; color:var(--suave); white-space:nowrap; overflow:hidden;
+                   text-overflow:ellipsis; }
+  .cartao .linha b { color:var(--txt); font-weight:600; }
+  .cartao .linha .verde { color:var(--verde); font-weight:600; }
+  .cartao .pe { display:flex; gap:8px; align-items:center; margin:6px 0 2px; flex-wrap:wrap; }
+  .cartao .preco { font-weight:700; font-size:14px; color:var(--txt); }
+  .cartao .botoes { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+  .cartao .botoes a { text-align:center; font-size:12px; font-weight:600; padding:7px 6px;
+                      border-radius:9px; border:1px solid var(--linha); color:var(--txt);
+                      background:var(--card2); }
+  .cartao .botoes a:hover { border-color:var(--acc); color:var(--acc); text-decoration:none; }
+  .cartao .botoes a.forte { background:var(--acc2); border-color:var(--acc-borda); color:var(--acc); }
+  .cartao .copy { max-width:none; -webkit-line-clamp:2; margin-top:8px; color:var(--copy); }
+  /* A capa é um quadrado fixo e a mídia vive DENTRO dele, absoluta: com
+     `height:100%` num pai que só tem aspect-ratio, um vídeo vertical impunha a
+     própria altura e cada cartão saía de um tamanho. */
+  .cartao .capa { position:relative; aspect-ratio:1/1; background:var(--card2);
+                  overflow:hidden; margin:0 14px 14px; border-radius:12px; }
+  .cartao .capa > a { position:absolute; inset:0; display:block; }
+  .cartao .capa img, .cartao .capa video { position:absolute; inset:0;
+                      width:100%; height:100%; object-fit:cover; display:block; }
+  .cartao .capa .sem { position:absolute; inset:0; display:flex; align-items:center;
+                       justify-content:center; color:var(--fraco); font-size:13px; }
+  .selo-score { position:absolute; top:8px; left:8px; background:var(--vidro);
+                border-radius:999px; padding:2px 9px; font-size:11px; font-weight:700;
+                color:var(--acc); box-shadow:0 1px 4px rgba(0,0,0,.08); }
+
+  .mural-item { position:relative; aspect-ratio:1/1; border-radius:14px; overflow:hidden;
+                background:var(--card); box-shadow:var(--sombra); }
+  .mural-item > a { position:absolute; inset:0; display:block; }
+  .mural-item img, .mural-item video { position:absolute; inset:0;
+                    width:100%; height:100%; object-fit:cover; display:block; }
+  .mural-item .sem { width:100%; height:100%; display:flex; align-items:center;
+                     justify-content:center; padding:10px; text-align:center;
+                     color:var(--suave); font-size:12px; line-height:1.3; }
+  .mural-item .legenda { position:absolute; inset:auto 0 0 0; padding:22px 9px 8px;
+                         background:linear-gradient(transparent, rgba(20,22,30,.85)); color:#fff;
+                         font-size:11px; line-height:1.3; opacity:0; transition:opacity .15s; }
+  .mural-item .legenda .sub { color:#e5e7ee; }
+  .mural-item:hover .legenda, .mural-item:focus-within .legenda { opacity:1; }
+  .mural-item .acoes { position:absolute; top:6px; right:6px; display:flex; gap:4px;
+                       opacity:0; transition:opacity .15s; }
+  .mural-item:hover .acoes { opacity:1; }
+  .mural-item .acoes button { background:var(--card); border:0; border-radius:50%; width:26px;
+                              height:26px; cursor:pointer; color:var(--icone); font-size:12px;
+                              padding:0; box-shadow:0 1px 4px rgba(0,0,0,.12); }
+  .mural-item .acoes .estrela.on { color:var(--amarelo); }
+
+  /* ------------------------------------------------ seleção e desfazer */
+  .sel { width:15px; height:15px; accent-color:var(--acc); cursor:pointer; }
+  .mural-item .sel { position:absolute; top:10px; left:10px; z-index:2; }
+  .barra-sel { position:sticky; top:72px; z-index:6; display:flex; align-items:center;
+               gap:10px; margin-bottom:12px; padding:10px 14px; border-radius:12px;
+               background:var(--acc2); border:1px solid var(--acc-borda); }
+  .barra-sel b { font-variant-numeric:tabular-nums; color:var(--acc); }
+  .barra-sel .sp { flex:1; }
+  .barra-sel button { background:var(--card); border:1px solid var(--linha); color:var(--txt);
+                      padding:7px 12px; border-radius:9px; cursor:pointer;
+                      font:600 12px "Poppins", system-ui, sans-serif; }
+  .barra-sel button:hover { border-color:var(--acc); color:var(--acc); }
+  .barra-sel button.perigo { color:var(--acc); }
+
+  .desfazer { position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+              z-index:50; display:flex; align-items:center; gap:14px;
+              padding:12px 16px; border-radius:12px; background:var(--aviso); color:var(--bg);
+              box-shadow:0 8px 26px rgba(0,0,0,.25); }
+  .desfazer button { background:none; border:0; color:var(--aviso-acao); font-weight:700;
+                     cursor:pointer; font-size:13px; }
+  #fila { color:var(--acc); font-weight:600; }
+
+  @media (max-width:760px) {
+    header { gap:10px; height:auto; flex-wrap:wrap; padding:10px 14px; }
+    .abas { height:44px; order:3; width:100%; }
+    header .quem { display:none; }
+    main { padding:16px; }
+    .filtros { grid-template-columns:1fr 1fr; gap:10px; padding:14px; }
+    .filtros .checks, .filtros .botoes { grid-column:1 / -1; padding-top:0; }
+  }
+
+  /* ------------------------------------------------ tema */
+  .tema-btn { width:36px; height:36px; border-radius:50%; border:1px solid var(--linha);
+              background:var(--card); color:var(--txt); cursor:pointer; font-size:16px;
+              display:grid; place-items:center; padding:0; }
+  .tema-btn:hover { border-color:var(--acc); color:var(--acc); }
+  .filtros input::placeholder { color:var(--fraco); }
+  body, header, .filtros, .card, .cartao, .wrap { transition:background-color .2s, border-color .2s; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><span class="marca">⛏</span><span>minerador<b>.ofertas</b></span></div>
+  <nav class="abas">
+    <button class="aba ativa" data-aba="ofertas">Ofertas</button>
+    <button class="aba" data-aba="melhores">★ Melhores <span id="n-melhores">0</span></button>
+  </nav>
+  <span class="sp"></span>
+  <span class="sub" id="fila" hidden></span>
+  <div class="quem">{{ usuario }}<br>plano {{ plano }} · {{ usos }} usos</div>
+  <button class="btn" id="btn-reprocessar" title="Analisar de novo os sites dos anúncios">↻ Reprocessar</button>
+  <button class="btn" id="btn-csv">⤓ CSV</button>
+  <button class="tema-btn" id="btn-tema" title="Alternar modo claro/escuro">☾</button>
+  <a class="btn" href="/logout">Sair</a>
+</header>
+
+<main>
+  <div class="filtros" id="filtros">
+    <div><label><i>▦</i>Mín. anúncios ativos</label><input type="number" id="f-ads" value="1" min="0"></div>
+    <div><label><i>◷</i>Mín. dias rodando</label><input type="number" id="f-dias" value="0" min="0"></div>
+    <div><label><i>⌕</i>Busca livre</label><input id="f-q" placeholder="texto, domínio, oferta"></div>
+    <div><label><i>#</i>Termo pesquisado</label><input id="f-termo" placeholder="ex: emagrecimento"></div>
+    <div><label><i>◎</i>País</label><select id="f-pais"><option value="">todos</option></select></div>
+    <div><label><i>⛁</i>Gateway</label><select id="f-gw"><option value="">todos</option></select></div>
+    <div><label><i>◈</i>Operação</label><select id="f-tipo">
+      <option value="">todas</option>
+      <option value="plataforma">infoproduto ou e-commerce</option>
+      <option value="infoproduto">infoproduto</option>
+      <option value="ecommerce">e-commerce</option>
+      <option value="pagamento">só meio de pagamento</option>
+    </select></div>
+    <div><label><i>R$</i>Preço</label><div class="faixa">
+      <input type="number" id="f-preco-min" min="0" step="1" placeholder="de 0">
+      <input type="number" id="f-preco-max" min="0" step="1" placeholder="até ∞"></div></div>
+    <div class="checks">
+      <label title="Preço detectado até R$ 50 (ou o valor em &quot;até&quot;), com página de checkout e site que vende. Sem preço, perfil, app e WhatsApp ficam de fora."><input type="checkbox" id="f-low"> ⚡ só low ticket</label>
+      <label><input type="checkbox" id="f-com-foto"> com foto</label>
+      <label><input type="checkbox" id="f-com-preco"> com preço</label>
+      <label><input type="checkbox" id="f-so-venda"> só quem vende</label>
+    </div>
+    <div class="botoes">
+      <button id="btn-filtrar">↻ Filtrar</button>
+      <button id="btn-limpar-filtros" class="preset">Limpar</button>
+    </div>
+  </div>
+  <div class="cards" id="cards"></div>
+
+  <div class="barra-visao">
+      <span class="titulo" id="titulo-lista">Ofertas low ticket</span>
+      <select id="ordenar" title="Ordenar">
+        <option value="score">Maior score</option>
+        <option value="anuncios_ativos">Mais anúncios ativos</option>
+        <option value="dias_rodando">Mais tempo rodando</option>
+        <option value="preco">Menor preço</option>
+        <option value="page_name">Nome (A-Z)</option>
+      </select>
+      <button class="visao ativa" data-visao="tabela" title="Tabela: tudo lado a lado">▤ Tabela</button>
+      <button class="visao" data-visao="cartoes" title="Cartões: foto grande e dados embaixo">▦ Cartões</button>
+      <button class="visao" data-visao="mural" title="Mural: só as fotos, para bater o olho">⣿ Mural</button>
+  </div>
+
+  <div class="barra-sel" id="barra-sel" hidden>
+    <b id="sel-n">0</b> selecionado(s)
+    <span class="sp"></span>
+    <button id="sel-favoritar">★ Salvar em Melhores</button>
+    <button id="sel-excluir" class="perigo">✕ Excluir selecionados</button>
+    <button id="sel-limpar">limpar seleção</button>
+  </div>
+
+
+  <div class="wrap">
+    <table>
+      <thead><tr>
+        <th><input type="checkbox" class="sel" id="sel-todos" title="Selecionar tudo"></th>
+        <th title="Salvar em Melhores">★</th>
+        <th>Produto</th>
+        <th data-k="score">Score</th>
+        <th data-k="page_name">Anunciante</th>
+        <th data-k="anuncios_ativos">Anúncios ativos</th>
+        <th data-k="dias_rodando">Dias rodando</th>
+        <th data-k="dominio">LP (site)</th>
+        <th data-k="gateway">Gateway</th>
+        <th data-k="preco">Preço</th>
+        <th data-k="copy">Copy</th>
+        <th title="Excluir">✕</th>
+      </tr></thead>
+      <tbody id="linhas"></tbody>
+    </table>
+  </div>
+
+  <div class="grade" id="grade" hidden></div>
+  <div class="vazio-msg" id="vazio" hidden>Nenhuma oferta ainda. Rode uma pesquisa pela extensão.</div>
+</main>
+
+<div class="desfazer" id="desfazer" hidden>
+  <span id="desfazer-txt"></span>
+  <button id="desfazer-btn">Desfazer</button>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let dados = [];
+let melhores = [];
+let idsFav = new Set();
+let aba = "ofertas";
+let ordem = { k: "score", asc: false };
+// A escolha de visualização é preferência de leitura: fica no navegador.
+let visao = localStorage.getItem("mn_visao") || "cartoes";
+const selecionados = new Set();
+let desfazerTimer;
+
+const lista = () => (aba === "ofertas" ? dados : melhores);
+
+function params() {
+  const p = new URLSearchParams();
+  p.set("min_anuncios", $("#f-ads").value || 0);
+  p.set("min_dias", $("#f-dias").value || 0);
+  if ($("#f-gw").value) p.set("gateway", $("#f-gw").value);
+  if ($("#f-pais").value) p.set("pais", $("#f-pais").value);
+  if ($("#f-termo").value) p.set("termo", $("#f-termo").value);
+  if ($("#f-q").value) p.set("q", $("#f-q").value);
+  if ($("#f-tipo").value) p.set("tipo", $("#f-tipo").value);
+  if ($("#f-preco-min").value) p.set("preco_min", $("#f-preco-min").value);
+  if ($("#f-preco-max").value) p.set("preco_max", $("#f-preco-max").value);
+  if ($("#f-com-preco").checked) p.set("com_preco", "1");
+  if ($("#f-so-venda").checked) p.set("so_venda", "1");
+  if ($("#f-low").checked) p.set("low", "1");
+  if ($("#f-com-foto").checked) p.set("com_foto", "1");
+  return p;
+}
+
+async function carregarMelhores() {
+  const j = await (await fetch("/dados/favoritos")).json();
+  melhores = j.favoritos;
+  idsFav = new Set(melhores.map(o => String(o.page_id)));
+  $("#n-melhores").textContent = melhores.length;
+}
+
+async function carregar() {
+  const r = await fetch("/dados/ofertas?" + params());
+  const j = await r.json();
+  dados = j.ofertas;
+  await carregarMelhores();
+  pintarCards(aba === "ofertas" ? j.resumo : resumoDe(melhores));
+  pintarGateways();
+  pintarPaises();
+  pintar();
+  if (j.resumo.destinos_pendentes > 0 || j.resumo.midias_pendentes > 0) moerFila();
+}
+
+// Em "Melhores" os cards de cima resumem o que está salvo, não a busca inteira.
+function resumoDe(itens) {
+  return {
+    anunciantes: itens.length,
+    anuncios: itens.reduce((s, o) => s + (o.anuncios_ativos || 0), 0),
+    com_gateway: itens.filter(o => o.gateway).length,
+    destinos_pendentes: 0,
+  };
+}
+
+async function alternarFavorito(pageId) {
+  const salvo = idsFav.has(String(pageId));
+  const r = await fetch(salvo ? "/dados/favoritos/remover" : "/dados/favoritos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ page_id: String(pageId) }),
+  });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    alert(j.erro || "Não deu para salvar em Melhores");
+    return;
+  }
+  await carregarMelhores();
+  if (aba === "melhores") pintarCards(resumoDe(melhores));
+  pintar();
+}
+
+function pintarCards(r) {
+  const escondidos = (r.total || r.anunciantes) - r.anunciantes;
+  $("#cards").innerHTML = [
+    ["Anunciantes" + (escondidos > 0 ? ` · ${escondidos} fora do filtro` : ""), r.anunciantes],
+    ["Anúncios ativos", r.anuncios],
+    ["Com gateway detectado", r.com_gateway],
+    ["Destinos na fila", r.destinos_pendentes],
+  ].map(([rot, n]) => `<div class="card"><div class="n">${n}</div><div class="r">${rot}</div></div>`).join("");
+}
+
+function pintarGateways() {
+  const sel = $("#f-gw"), atual = sel.value;
+  const gws = [...new Set(dados.map(o => o.gateway).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">todos</option>' +
+    gws.map(g => `<option${g === atual ? " selected" : ""}>${g}</option>`).join("");
+}
+
+// O filtro de país é aplicado no servidor, então a lista já vem reduzida:
+// o valor escolhido continua na lista para não sumir do seletor.
+function pintarPaises() {
+  const sel = $("#f-pais"), atual = sel.value;
+  const vistos = new Set(dados.flatMap(o => o.paises || []));
+  if (atual) vistos.add(atual);
+  sel.innerHTML = '<option value="">todos</option>' +
+    [...vistos].sort().map(p => `<option${p === atual ? " selected" : ""}>${p}</option>`).join("");
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+// "R$ 1.299,90" / "$25.000" -> número, para ordenar preço de verdade.
+function numPreco(v) {
+  const limpo = String(v || "").replace(/[^\d,.]/g, "");
+  if (!limpo) return Infinity;
+  const p = limpo.lastIndexOf("."), c = limpo.lastIndexOf(",");
+  const dec = p > c ? "." : (c > -1 ? "," : "");
+  const n = parseFloat(dec
+    ? limpo.replace(dec === "." ? /,/g : /\./g, "").replace(",", ".")
+    : limpo.replace(/[.,]/g, ""));
+  return isNaN(n) ? Infinity : n;
+}
+
+function ordenados() {
+  const k = ordem.k;
+  return [...lista()].sort((a, b) => {
+    if (k === "preco") {                       // sem preço vai para o fim, sempre
+      const na = numPreco(a.preco), nb = numPreco(b.preco);
+      if (na === nb) return 0;
+      if (na === Infinity) return 1;
+      if (nb === Infinity) return -1;
+      return na - nb;                          // menor primeiro: oferta de entrada
+    }
+    const va = a[k], vb = b[k];
+    const cmp = typeof va === "number" ? va - vb : String(va).localeCompare(String(vb), "pt-BR");
+    return ordem.asc ? cmp : -cmp;
+  });
+}
+
+function pintar() {
+  const itens = ordenados();
+  $("#vazio").hidden = itens.length > 0;
+  $("#vazio").textContent = aba === "ofertas"
+    ? "Nenhuma oferta ainda. Rode uma pesquisa pela extensão."
+    : "Nenhum anunciante salvo. Clique na ★ de uma oferta.";
+  $(".wrap").hidden = visao !== "tabela";
+  $("#grade").hidden = visao === "tabela";
+  $("#grade").className = "grade " + (visao === "mural" ? "g-mural" : "g-cartoes");
+  if (visao === "tabela") pintarTabela(itens);
+  else if (visao === "cartoes") pintarCartoes(itens);
+  else pintarMural(itens);
+  pintarSelecao();
+}
+
+const caixaHTML = (o) => `<input type="checkbox" class="sel" data-sel="${esc(o.page_id)}"
+    ${selecionados.has(String(o.page_id)) ? "checked" : ""} title="Selecionar">`;
+
+const acoesHTML = (o) => `
+  <div class="acoes">
+    <button class="estrela ${idsFav.has(String(o.page_id)) ? "on" : ""}" data-fav="${esc(o.page_id)}"
+            title="${idsFav.has(String(o.page_id)) ? "Tirar de Melhores" : "Salvar em Melhores"}"
+      >${idsFav.has(String(o.page_id)) ? "★" : "☆"}</button>
+    <button class="excluir" data-excluir="${esc(o.page_id)}"
+            title="${aba === "ofertas" ? "Excluir dos resultados" : "Tirar de Melhores"}">✕</button>
+  </div>`;
+
+// Ordem da capa: vídeo copiado para o Blob > poster/og:image > nome.
+// Nada de apontar para a CDN da Meta — aquela URL é assinada e morre em horas.
+// Troca a imagem pela próxima fonte da lista; acabando, mostra o texto.
+function mnTrocarFonte(img, semTexto) {
+  let resto = [];
+  try { resto = JSON.parse(img.dataset.resto || "[]"); } catch (e) { /* nada */ }
+  const proxima = resto.shift();
+  if (!proxima) {
+    img.outerHTML = `<div class="sem">${semTexto}</div>`;
+    return;
+  }
+  img.dataset.resto = JSON.stringify(resto);
+  img.src = proxima;
+}
+
+const fotoHTML = (o, semTexto = "—") => {
+  // Vídeo pode ter sido apagado pela limpeza do Blob: sem reserva, sobra um
+  // quadro preto. O onerror troca pela imagem, e a imagem tem o dela.
+  if (o.video) {
+    const reserva = o.poster || o.imagem;
+    const trocaVideo = reserva
+      ? `this.outerHTML='<img src=&quot;${esc(reserva)}&quot; loading=&quot;lazy&quot; referrerpolicy=&quot;no-referrer&quot;>'`
+      : `this.outerHTML='<div class=&quot;sem&quot;>${esc(semTexto)}</div>'`;
+    return `<video src="${esc(o.video)}" ${o.poster ? `poster="${esc(o.poster)}"` : ""}
+                   muted loop playsinline autoplay preload="metadata"
+                   onerror="${trocaVideo}"></video>`;
+  }
+  // Corrente de reserva: criativo do anúncio → og:image do destino → nome.
+  // URL da CDN da Meta expira em dias; sem a troca no onerror a capa somia e
+  // sobrava um quadro vazio mesmo havendo outra imagem disponível.
+  const fontes = [o.imagem, o.imagem_anuncio, o.imagem_site].filter(Boolean);
+  if (fontes.length) {
+    const proxima = fontes.slice(1)
+      .map((u) => `&quot;${esc(u)}&quot;`).join(",");
+    return `<img src="${esc(fontes[0])}" alt="" loading="lazy" referrerpolicy="no-referrer"
+                 data-resto="[${proxima}]"
+                 onerror="mnTrocarFonte(this, '${esc(semTexto)}')">`;
+  }
+  return `<div class="sem">${esc(semTexto)}</div>`;
+};
+
+// Cor do avatar sai do nome: o mesmo anunciante tem sempre a mesma cor.
+function corDe(texto) {
+  let h = 0;
+  for (const c of String(texto || "")) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return `hsl(${h} 62% 52%)`;
+}
+const iniciais = (nome) => String(nome || "?").trim().split(/\s+/).slice(0, 2)
+  .map(p => p[0] || "").join("").toUpperCase() || "?";
+
+function pintarCartoes(itens) {
+  $("#grade").innerHTML = itens.map(o => `
+    <div class="cartao">
+      <div class="topo">
+        ${caixaHTML(o)}
+        <div class="avatar" style="background:${corDe(o.page_name)}">${esc(iniciais(o.page_name))}</div>
+        <div class="quem">
+          <div class="nome" title="${esc(o.page_name)}">${esc(o.page_name)}
+            ${o.recuperado ? '<span class="tag rec">recuperado</span>' : ""}</div>
+          <div class="visto">${(o.termos || []).length ? "Busca: " + o.termos.map(esc).join(", ")
+            : (o.salvo_em ? "Salvo em " + esc(o.salvo_em) : esc(o.dominio || ""))}</div>
+        </div>
+        ${acoesHTML(o)}
+      </div>
+      <div class="corpo">
+        <div class="total">${o.anuncios_ativos} ${o.anuncios_ativos === 1 ? "anúncio" : "anúncios"}<small>${o.contagem_real ? "contagem real" : "ativos*"}</small></div>
+        <div class="linha">Países: <b>${(o.paises || []).map(esc).join(", ") || "—"}</b></div>
+        <div class="linha">Rodando há: <b>${o.dias_rodando} dias</b>${o.dias_novo !== o.dias_rodando
+          ? ` · <span class="verde">novo criativo há ${o.dias_novo}d</span>` : ""}</div>
+        <div class="linha">${o.sem_lp ? 'LP: <b>sem LP — o anúncio leva direto ao checkout</b>'
+          : o.destino ? `LP: <a href="${esc(o.destino)}" target="_blank" rel="noopener noreferrer"><b>${esc(o.dominio || o.destino)}</b></a>`
+          : "LP: <b>—</b>"}</div>
+        <div class="pe">
+          ${o.preco ? `<span class="preco">${esc(o.preco)}</span>` : ""}
+          ${o.gateway ? `<span class="tag gw">${esc(o.gateway)}</span>` : '<span class="tag">sem gateway</span>'}
+          <span class="tag" title="anúncios ativos × tempo rodando">score ${o.score}</span>
+        </div>
+        <div class="botoes">
+          ${o.url_biblioteca ? `<a href="${o.url_biblioteca}" target="_blank" rel="noopener">Ver na Biblioteca</a>` : "<span></span>"}
+          ${o.destino && !o.sem_lp ? `<a class="forte" href="${esc(o.destino)}" target="_blank" rel="noopener noreferrer">Abrir LP ↗</a>`
+            : (o.checkout_url || o.destino ? `<a class="forte" href="${esc(o.checkout_url || o.destino)}" target="_blank" rel="noopener noreferrer">Checkout ↗</a>` : "")}
+        </div>
+        ${o.checkout_url && o.destino && !o.sem_lp
+          ? `<div class="linha">Checkout: <a href="${esc(o.checkout_url)}" target="_blank" rel="noopener noreferrer">${esc(o.gateway || "abrir")} ↗</a></div>` : ""}
+        ${o.copy ? `<div class="copy" title="${esc(o.copy)}">${esc(o.copy)}</div>` : ""}
+      </div>
+      <div class="capa">
+        ${o.destino ? `<a href="${esc(o.destino)}" target="_blank" rel="noopener noreferrer">${fotoHTML(o)}</a>` : fotoHTML(o)}
+      </div>
+    </div>`).join("");
+}
+
+function pintarMural(itens) {
+  $("#grade").innerHTML = itens.map(o => `
+    <div class="mural-item">
+      ${caixaHTML(o)}
+      ${o.destino
+        ? `<a href="${esc(o.destino)}" target="_blank" rel="noopener noreferrer">${fotoHTML(o, o.page_name)}</a>`
+        : fotoHTML(o, o.page_name)}
+      ${acoesHTML(o)}
+      <div class="legenda">
+        <div class="nome">${esc(o.page_name)}</div>
+        <div class="sub">${o.anuncios_ativos} ativos · ${o.dias_rodando}d${o.preco ? " · " + esc(o.preco) : ""}</div>
+      </div>
+    </div>`).join("");
+}
+
+function pintarTabela(itens) {
+  $("#linhas").innerHTML = itens.map(o => `
+    <tr>
+      <td><input type="checkbox" class="sel" data-sel="${esc(o.page_id)}"
+                 ${selecionados.has(String(o.page_id)) ? "checked" : ""}></td>
+      <td><button class="estrela ${idsFav.has(String(o.page_id)) ? "on" : ""}"
+                  data-fav="${esc(o.page_id)}"
+                  title="${idsFav.has(String(o.page_id)) ? "Tirar de Melhores" : "Salvar em Melhores"}"
+          >${idsFav.has(String(o.page_id)) ? "★" : "☆"}</button></td>
+      <td>${o.video
+        ? `<video class="foto" src="${esc(o.video)}" ${o.poster ? `poster="${esc(o.poster)}"` : ""}
+                  muted loop playsinline autoplay preload="metadata"></video>
+           <div class="foto-rot">vídeo</div>`
+        : (o.imagem
+          ? `<a href="${esc(o.destino || o.imagem)}" target="_blank" rel="noopener noreferrer">
+               <img class="foto" src="${esc(o.imagem)}" alt="" loading="lazy" referrerpolicy="no-referrer"
+                    onerror="this.parentElement.innerHTML='<div class=&quot;foto-vazia&quot;>—</div>'"></a>
+             <div class="foto-rot">${o.imagem_do_site ? "do site"
+             : o.imagem_e_reserva ? "do anúncio*" : "do anúncio"}</div>`
+          : '<div class="foto-vazia">—</div>')}</td>
+      <td class="num">${o.score}</td>
+      <td>
+        <div class="nome">${esc(o.page_name)}
+          ${o.recuperado ? '<span class="tag rec" title="Retrato remontado: sem métricas até a próxima coleta">recuperado</span>' : ""}</div>
+        <div class="sub">${(o.termos || []).map(esc).join(", ")}${(o.paises || []).length ? " · " + o.paises.map(esc).join("/") : ""}${o.salvo_em ? " · salvo em " + esc(o.salvo_em) : ""}</div>
+        ${o.url_biblioteca ? `<a class="sub" href="${o.url_biblioteca}" target="_blank" rel="noopener">ver na biblioteca ↗</a>` : ""}
+      </td>
+      <td class="num">${o.anuncios_ativos}
+        ${o.contagem_real ? '<span class="tag real">real</span>' : '<span class="tag vazio">parcial</span>'}
+        <div class="sub">${o.variacoes} variações</div>
+      </td>
+      <td class="num">${o.dias_rodando}
+        <div class="sub">desde ${o.primeiro_anuncio || "—"}</div>
+        <div class="sub">${o.dias_novo === o.dias_rodando ? "criativo único"
+          : `mais novo há ${o.dias_novo}d`}</div></td>
+      <td>
+        ${o.destino ? `<a href="${esc(o.destino)}" target="_blank" rel="noopener noreferrer">${esc(o.dominio || o.destino)}</a>` : '<span class="sub">—</span>'}
+        ${o.pendente ? '<div class="sub">resolvendo…</div>' : ""}
+      </td>
+      <td>${o.gateway ? `<span class="tag gw">${esc(o.gateway)}</span>` : '<span class="tag vazio">não detectado</span>'}
+        ${o.tipo_gateway ? `<div class="sub">${esc(o.tipo_gateway)}</div>` : ""}
+        ${o.checkout_url ? `<div class="sub"><a href="${esc(o.checkout_url)}" target="_blank" rel="noopener noreferrer">checkout ↗</a></div>` : ""}
+      </td>
+      <td>${esc(o.preco) || '<span class="sub">—</span>'}</td>
+      <td><div class="copy">${esc(o.copy)}</div></td>
+      <td><button class="excluir" data-excluir="${esc(o.page_id)}"
+                  title="${aba === "ofertas" ? "Excluir dos resultados" : "Tirar de Melhores"}">✕</button></td>
+    </tr>`).join("");
+}
+
+function cliqueNaLinha(e) {
+  const caixa = e.target.closest("input[data-sel]");
+  if (caixa) {
+    if (caixa.checked) selecionados.add(caixa.dataset.sel);
+    else selecionados.delete(caixa.dataset.sel);
+    return pintarSelecao();
+  }
+  const fav = e.target.closest("button[data-fav]");
+  if (fav) return alternarFavorito(fav.dataset.fav);
+  const x = e.target.closest("button[data-excluir]");
+  if (x) excluir(x.dataset.excluir);
+}
+
+function pintarSelecao() {
+  $("#barra-sel").hidden = selecionados.size === 0;
+  $("#sel-n").textContent = selecionados.size;
+  const visiveis = lista().map(o => String(o.page_id));
+  $("#sel-todos").checked = visiveis.length > 0 && visiveis.every(i => selecionados.has(i));
+}
+
+$("#sel-todos").onchange = (e) => {
+  for (const id of lista().map(o => String(o.page_id))) {
+    if (e.target.checked) selecionados.add(id);
+    else selecionados.delete(id);
+  }
+  pintar();
+};
+
+$("#sel-limpar").onclick = () => { selecionados.clear(); pintar(); };
+$("#sel-excluir").onclick = () => excluir([...selecionados]);
+$("#sel-favoritar").onclick = async () => {
+  await post("/dados/favoritos", { page_ids: [...selecionados] });
+  selecionados.clear();
+  await carregar();
+};
+$("#linhas").onclick = cliqueNaLinha;
+$("#grade").onclick = cliqueNaLinha;
+
+document.querySelectorAll(".visao").forEach(botao => botao.onclick = () => {
+  visao = botao.dataset.visao;
+  localStorage.setItem("mn_visao", visao);
+  document.querySelectorAll(".visao").forEach(x => x.classList.toggle("ativa", x === botao));
+  pintar();
+});
+
+$("#ordenar").onchange = (e) => {
+  ordem = { k: e.target.value, asc: e.target.value === "page_name" };
+  pintar();
+};
+
+// Em Ofertas o ✕ apaga os anúncios coletados daquele anunciante; em Melhores
+// tira o retrato salvo. Nunca faz as duas coisas.
+// Sem caixa de confirmação: some da tela na hora e fica um "Desfazer" no
+// rodapé por 9s. Excluir marca `excluido_em` no banco, então voltar atrás é
+// possível — era o que a confirmação estava tentando comprar.
+function mostrarDesfazer(texto, aoDesfazer) {
+  clearTimeout(desfazerTimer);
+  $("#desfazer-txt").textContent = texto;
+  $("#desfazer").hidden = false;
+  $("#desfazer-btn").onclick = async () => {
+    $("#desfazer").hidden = true;
+    clearTimeout(desfazerTimer);
+    await aoDesfazer();
+    await carregar();
+  };
+  desfazerTimer = setTimeout(() => { $("#desfazer").hidden = true; }, 9000);
+}
+
+const post = (url, corpo) => fetch(url, {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(corpo),
+});
+
+// Em Ofertas o ✕ esconde os anúncios do anunciante; em Melhores tira o retrato
+// salvo. Nunca faz as duas coisas. Aceita um id ou uma lista.
+async function excluir(pageIds) {
+  const ids = [].concat(pageIds).map(String);
+  if (!ids.length) return;
+  const itens = lista().filter(o => ids.includes(String(o.page_id)));
+  const nome = itens.length === 1 ? `"${itens[0].page_name}"` : `${ids.length} anunciantes`;
+
+  if (aba === "melhores") {
+    const retratos = itens.map(o => ({ ...o }));
+    await post("/dados/favoritos/remover", { page_ids: ids });
+    selecionados.clear();
+    await carregar();
+    return mostrarDesfazer(`${nome} fora de Melhores.`, async () => {
+      for (const r of retratos) await post("/dados/favoritos", { page_id: r.page_id, retrato: r });
+    });
+  }
+
+  const r = await post("/dados/excluir", { page_ids: ids });
+  if (!r.ok) return mostrarDesfazer("Não deu para excluir.", () => {});
+  const salvos = ids.filter(i => idsFav.has(i)).length;
+  selecionados.clear();
+  await carregar();
+  mostrarDesfazer(`${nome} fora dos resultados.`
+    + (salvos ? ` ${salvos} continua(m) em Melhores.` : ""),
+    () => post("/dados/restaurar", { page_ids: ids }));
+}
+
+document.querySelectorAll(".aba").forEach(botao => botao.onclick = () => {
+  aba = botao.dataset.aba;
+  document.querySelectorAll(".aba").forEach(x => x.classList.toggle("ativa", x === botao));
+  $("#titulo-lista").textContent = aba === "ofertas" ? "Ofertas low ticket" : "★ Melhores";
+  // Os filtros são da busca; em Melhores o que vale é o retrato salvo.
+  $(".filtros").hidden = aba === "melhores";
+  if (aba === "melhores") pintarCards(resumoDe(melhores));
+  else carregar();
+  pintar();
+});
+
+document.querySelectorAll("th[data-k]").forEach(th => th.onclick = () => {
+  const k = th.dataset.k;
+  ordem = { k, asc: ordem.k === k ? !ordem.asc : false };
+  // mantém o seletor coerente com o que a tabela acabou de fazer
+  $("#ordenar").value = [...$("#ordenar").options].some(o => o.value === k) ? k : "";
+  pintar();
+});
+
+// Em serverless não há worker em background: o painel puxa a fila em lotes
+// até ela zerar.
+let moendo = false;
+async function moerFila(maxRodadas = 40) {
+  if (moendo) return;
+  moendo = true;
+  $("#fila").hidden = false;
+  try {
+    for (let i = 0; i < maxRodadas; i++) {
+      const r = await fetch("/dados/enriquecer?limite=8", { method: "POST" });
+      if (!r.ok) break;
+      const j = await r.json();
+      $("#fila").textContent = `resolvendo destinos… faltam ${j.pendentes}`;
+      if (!j.processados || !j.pendentes) break;
+    }
+    // Mídia é mais lenta (baixa da CDN e sobe pro Blob): lotes menores.
+    for (let i = 0; i < maxRodadas; i++) {
+      const r = await fetch("/dados/midias?limite=3", { method: "POST" });
+      if (!r.ok) break;
+      const j = await r.json();
+      $("#fila").textContent = `copiando vídeos e capas… faltam ${j.pendentes}`;
+      if (!j.processados || !j.pendentes) break;
+      if (i % 2 === 1) { await carregarMelhores(); pintar(); }   // capa aparecendo aos poucos
+    }
+  } finally {
+    moendo = false;
+    $("#fila").hidden = true;
+    await carregar();
+  }
+}
+
+$("#btn-filtrar").onclick = carregar;
+
+// Low ticket e "com foto" ficam lembrados: o painel abre já cortando o que
+// não é oferta de entrada. "limpar filtros" desliga e mostra tudo.
+const lembrar = (id, chave, padrao) => {
+  let v = padrao;
+  try { const s = localStorage.getItem(chave); if (s !== null) v = s === "1"; } catch {}
+  $(id).checked = v;
+  $(id).addEventListener("change", () => {
+    try { localStorage.setItem(chave, $(id).checked ? "1" : "0"); } catch {}
+    carregar();
+  });
+};
+lembrar("#f-low", "mn_low", true);
+lembrar("#f-com-foto", "mn_com_foto", false);
+
+$("#btn-limpar-filtros").onclick = () => {
+  $("#f-ads").value = 1; $("#f-dias").value = 0;
+  for (const id of ["#f-preco-min", "#f-preco-max", "#f-termo", "#f-q"]) $(id).value = "";
+  $("#f-com-preco").checked = false;
+  $("#f-so-venda").checked = false;
+  $("#f-low").checked = $("#f-com-foto").checked = false;
+  try { localStorage.setItem("mn_low", "0"); localStorage.setItem("mn_com_foto", "0"); } catch {}
+  $("#f-tipo").value = ""; $("#f-gw").value = ""; $("#f-pais").value = "";
+  carregar();
+};
+$("#btn-reprocessar").onclick = async () => {
+  const r = await fetch("/dados/reprocessar", { method: "POST" });
+  const j = await r.json();
+  $("#fila").hidden = false;
+  $("#fila").textContent = `${j.enfileirados} destinos reenfileirados`;
+  moerFila();
+};
+$("#btn-csv").onclick = () => {
+  const cols = ["page_name", "paises", "anuncios_ativos", "dias_rodando", "dominio", "destino",
+                "gateway", "checkout_url", "preco", "score", "imagem", "url_biblioteca"];
+  const linhas = [cols.join(",")].concat(lista().map(o =>
+    cols.map(c => `"${String(o[c] ?? "").replace(/"/g, '""')}"`).join(",")));
+  const url = URL.createObjectURL(new Blob(["﻿" + linhas.join("\n")], { type: "text/csv" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "ofertas.csv"; a.click();
+  URL.revokeObjectURL(url);
+};
+
+document.querySelectorAll(".visao").forEach(b => b.classList.toggle("ativa", b.dataset.visao === visao));
+
+// Modo claro/escuro: lembrado no navegador.
+function pintarBotaoTema() {
+  const escuro = document.documentElement.dataset.tema === "escuro";
+  $("#btn-tema").textContent = escuro ? "☀" : "☾";
+  $("#btn-tema").title = escuro ? "Mudar para modo claro" : "Mudar para modo escuro";
+}
+$("#btn-tema").onclick = () => {
+  const novo = document.documentElement.dataset.tema === "escuro" ? "claro" : "escuro";
+  document.documentElement.dataset.tema = novo;
+  try { localStorage.setItem("mn_tema", novo); } catch (e) { /* sem storage: vale só agora */ }
+  pintarBotaoTema();
+};
+pintarBotaoTema();
+
+carregar();
+// Recarregar sozinho a cada 30s multiplicava o tráfego do banco por nada:
+// o painel fica aberto horas. 2 minutos, e só quando a aba está visível.
+setInterval(() => { if (!document.hidden) carregar(); }, 120000);
+
+// Voltou para a aba do painel? Recarrega na hora. Sem isso, favoritar pela
+// extensão e vir conferir dava a impressão de que nada tinha sido salvo — a
+// atualização só viria no próximo ciclo de 2 minutos.
+let ultimaCarga = Date.now();
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && Date.now() - ultimaCarga > 5000) {
+    ultimaCarga = Date.now();
+    carregar();
+  }
+});
+</script>
+</body>
+</html>

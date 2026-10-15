@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Minerador — banco indisponível</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center;
+         justify-content:center; background:#0f1720; color:#e8eef5;
+         font:15px/1.6 system-ui, -apple-system, Segoe UI, sans-serif; }
+  .caixa { max-width:520px; padding:28px 32px; background:#18232f;
+           border:1px solid #26374a; border-radius:14px; }
+  h1 { font-size:18px; margin:0 0 12px; }
+  p { color:#93a4b8; margin:0 0 10px; }
+  code { background:#0d151d; padding:2px 6px; border-radius:5px; font-size:13px; }
+</style>
+</head>
+<body>
+  <div class="caixa">
+    <h1>⛏️ Banco indisponível</h1>
+    <p>{{ motivo }}</p>
+    <p>O painel volta sozinho assim que o banco aceitar conexão — nada precisa
+       ser reinstalado, e os dados coletados continuam lá.</p>
+    <p><code>/api/saude</code> mostra o estado a qualquer momento.</p>
+  </div>
+</body>
+</html>

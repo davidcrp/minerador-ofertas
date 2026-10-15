@@ -1,0 +1,131 @@
+/* Painel flutuante do minerador dentro da Biblioteca de Anúncios.
+   Tudo com prefixo .mnp- e valores explícitos — o CSS do Facebook muda sem
+   aviso e herança de fonte/cor estragaria o painel. */
+
+.mnp-painel {
+  position: fixed;
+  z-index: 2147483646;
+  display: flex;
+  flex-direction: column;
+  min-width: 250px;
+  min-height: 120px;
+  background: #2b3a4a;
+  border: 1px solid #1c2733;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
+  overflow: hidden;
+  font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #fff;
+}
+
+.mnp-painel * { box-sizing: border-box; }
+
+/* display:flex explícito ganha do [hidden] do navegador */
+.mnp-painel[hidden], .mnp-fab[hidden] { display: none; }
+
+.mnp-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  background: #22303e;
+  cursor: grab;
+  user-select: none;
+  flex: 0 0 auto;
+}
+
+.mnp-cabeca.mnp-arrastando { cursor: grabbing; }
+.mnp-titulo { flex: 1; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+.mnp-titulo b { color: #22c55e; }
+
+.mnp-cabeca button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  font: 600 12px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.mnp-cabeca button:hover { background: rgba(255, 255, 255, .28); }
+
+.mnp-corpo { flex: 1 1 auto; min-height: 0; background: #fff; }
+.mnp-corpo iframe { width: 100%; height: 100%; border: 0; display: block; }
+
+.mnp-painel.mnp-recolhido { height: auto !important; min-height: 0; }
+.mnp-painel.mnp-recolhido .mnp-corpo,
+.mnp-painel.mnp-recolhido .mnp-pega { display: none; }
+
+/* Canto de redimensionar — sem `resize: both` do CSS porque ele não funciona
+   com o iframe capturando o ponteiro. */
+.mnp-pega {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 45%, #22c55e 45%, #22c55e 62%,
+                              transparent 62%, transparent 72%, #22c55e 72%,
+                              #22c55e 88%, transparent 88%);
+}
+
+/* Enquanto arrasta/redimensiona o iframe não pode roubar o ponteiro. */
+.mnp-painel.mnp-mexendo .mnp-corpo { pointer-events: none; }
+
+.mnp-fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: #22c55e;
+  color: #06210f;
+  font: 700 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+}
+
+.mnp-fab:hover { background: #16a34a; }
+
+/* Plano B: se o Facebook barrar o iframe da extensão por CSP. */
+.mnp-aviso {
+  padding: 14px;
+  background: #fff;
+  color: #1f2a37;
+  font: 12px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.mnp-aviso button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px;
+  border: 0;
+  border-radius: 8px;
+  background: #2b3a4a;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Faixa da aba que a varredura profunda abre para contar anúncios. */
+.mnp-fundo {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2147483647;
+  padding: 8px 14px;
+  background: #22303e;
+  color: #fff;
+  font: 700 12px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+  text-align: center;
+}

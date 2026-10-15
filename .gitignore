@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+.vercel
+.env
+.env.local
+
+# não versionar
+extensao.zip
+FAVORITOS-RECUPERADOS.md
