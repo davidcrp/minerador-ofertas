@@ -2,12 +2,17 @@
    Tudo com prefixo .mn- e valores explícitos: o CSS do Facebook muda sem aviso
    e herança de fonte/cor estragaria o painel. */
 
+/* Grade aberta: some a barra da página. Só visual: a rolagem por código continua
+   funcionando, e é dela que o "Carregar mais" depende (overflow: hidden arriscaria). */
+html.wm-grade { scrollbar-width: none; }
+html.wm-grade::-webkit-scrollbar { display: none; }
+
 .mn-cartao {
   position: relative !important;
   /* a barra é absoluta no topo: o respiro evita que ela cubra o
      "Identificação da biblioteca" do próprio cartão */
   padding-top: 36px !important;
-  outline: 2px solid #22c55e;
+  outline: 2px solid #2f8bff;
   outline-offset: 2px;
   border-radius: 12px;
 }
@@ -35,7 +40,7 @@
   padding: 0 8px;
   border: 0;
   border-radius: 7px;
-  background: #2b3a4a;
+  background: #0b1017;
   color: #fff;
   font: inherit;
   letter-spacing: .04em;
@@ -43,9 +48,9 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
 }
 
-.mn-btn:hover { background: #3a4c5f; }
-.mn-btn.mn-verde { background: #22c55e; }
-.mn-btn.mn-verde:hover { background: #16a34a; }
+.mn-btn:hover { background: #1c2836; }
+.mn-btn.mn-verde { background: #2f8bff; color: #03142b; }
+.mn-btn.mn-verde:hover { background: #1f73e0; }
 .mn-btn svg { width: 13px; height: 13px; display: block; fill: currentColor; }
 
 .mn-menu {
@@ -66,14 +71,14 @@
   padding: 7px 10px;
   border: 0;
   border-radius: 7px;
-  background: #2b3a4a;
+  background: #0b1017;
   color: #fff;
   font: 500 12px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
 }
 
-.mn-menu button:hover { background: #22c55e; }
+.mn-menu button:hover { background: #2f8bff; }
 
 /* Quanto tempo o anúncio já roda, ao lado dos botões. */
 .mn-tempo {
@@ -82,7 +87,7 @@
   height: 26px;
   padding: 0 9px;
   border-radius: 7px;
-  background: #2b3a4a;
+  background: #0b1017;
   color: #cfe0f0;
   font: 600 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
   white-space: nowrap;
@@ -90,7 +95,7 @@
 }
 
 /* 60 dias ou mais: oferta que aguenta escala, merece destaque. */
-.mn-tempo.mn-veterano { background: #14532d; color: #86efac; }
+.mn-tempo.mn-veterano { background: #0c2f5c; color: #93c5fd; }
 .mn-tempo[hidden] { display: none; }
 
 /* Aviso curto de "copiado" — vive no body, fora do cartão. */
@@ -102,7 +107,7 @@
   z-index: 2147483647;
   padding: 9px 16px;
   border-radius: 9px;
-  background: #2b3a4a;
+  background: #0b1017;
   color: #fff;
   font: 600 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
   box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
@@ -125,7 +130,7 @@
   gap: 10px;
   padding: 8px 10px 8px 14px;
   border-radius: 999px;
-  background: #2b3a4a;
+  background: #0b1017;
   color: #fff;
   font: 600 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
   box-shadow: 0 4px 16px rgba(0, 0, 0, .35);

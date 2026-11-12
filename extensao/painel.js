@@ -19,8 +19,12 @@ let painel, cabeca, fab;
 const limites = () => ({ maxX: innerWidth - 60, maxY: innerHeight - 40 });
 
 async function ler() {
-  const s = await chrome.storage.local.get(["painelFlutuante", "painelGeo"]);
-  return { ligado: s.painelFlutuante !== false, geo: { ...PADRAO, ...(s.painelGeo || {}) } };
+  const s = await chrome.storage.local.get(["painelFlutuante", "painelGeo", "visaoAtiva"]);
+  const geo = { ...PADRAO, ...(s.painelGeo || {}) };
+  // Com a visão em grade aberta o painel começa recolhido no botão, para não
+  // cobrir os cards. Não é gravado: fechar a grade traz o painel de volta.
+  if (s.visaoAtiva !== false) geo.fechado = true;
+  return { ligado: s.painelFlutuante !== false, geo };
 }
 
 let gravando;
@@ -29,8 +33,20 @@ function gravar() {
   gravando = setTimeout(() => chrome.storage.local.set({ painelGeo: estado }), 250);
 }
 
+// Outra extensão na página pode apagar o iframe e deixar o painel em branco.
+function garantirConteudo() {
+  const corpo = painel.querySelector(".mnp-corpo");
+  if (corpo.children.length) return;
+  const quadro = document.createElement("iframe");
+  quadro.title = "WaveMiner";
+  quadro.allow = "clipboard-write";
+  corpo.appendChild(quadro);
+  quadro.src = chrome.runtime.getURL("popup.html?embutido=1");
+}
+
 function aplicar() {
-  const x = estado.x === null ? Math.max(12, innerWidth - estado.w - 24) : estado.x;
+  if (!estado.fechado) garantirConteudo();
+  const x =estado.x === null ? Math.max(12, innerWidth - estado.w - 24) : estado.x;
   painel.style.left = Math.min(Math.max(0, x), limites().maxX) + "px";
   painel.style.top = Math.min(Math.max(0, estado.y), limites().maxY) + "px";
   painel.style.width = Math.max(MIN_L, estado.w) + "px";
@@ -120,13 +136,14 @@ function montar(geo) {
   painel.className = "mnp-painel";
   painel.innerHTML = `
     <div class="mnp-cabeca">
-      <span class="mnp-titulo">⛏️ minerador<b>.ofertas</b></span>
+      <span class="mnp-titulo" style="display:flex;align-items:center;gap:7px"><svg viewBox="0 0 28 18" width="20" height="13" fill="none" stroke="#3b8fff" stroke-width="2.4" stroke-linecap="round" style="display:block" aria-hidden="true"><path d="M2 7c4-5 7-5 10-1.500s7 3.500 14-1.500"/><path d="M2 14c4-5 7-5 10-1.500s7 3.500 14-1.500" opacity=".5"/></svg><span>Wave<b>Miner</b></span></span>
+      <button data-mnp="grade" title="Abrir a visão em grade">▦</button>
       <button data-mnp="encostar" title="Encostar na outra borda">⇄</button>
       <button data-mnp="opacidade" title="Transparência">◐</button>
       <button data-mnp="recolher" title="Recolher (ou dê dois cliques no topo)">–</button>
       <button data-mnp="fechar" title="Fechar">✕</button>
     </div>
-    <div class="mnp-corpo"><iframe title="Minerador de Ofertas" allow="clipboard-write"></iframe></div>
+    <div class="mnp-corpo"><iframe title="WaveMiner" allow="clipboard-write"></iframe></div>
     <div class="mnp-pega" title="Arraste para redimensionar"></div>`;
 
   // src só depois de estar no DOM: evita o iframe carregar duas vezes
@@ -135,7 +152,7 @@ function montar(geo) {
 
   fab = document.createElement("button");
   fab.className = "mnp-fab";
-  fab.textContent = "⛏️ Minerador";
+  fab.textContent = "WaveMiner";
   fab.onclick = () => fechar(false);
   document.body.appendChild(fab);
 
@@ -146,6 +163,14 @@ function montar(geo) {
     if (acao === "opacidade") alternarOpacidade();
     if (acao === "encostar") encostar();
     if (acao === "fechar") fechar(true);
+    if (acao === "grade") chrome.storage.local.set({ visaoAtiva: true });
+  });
+
+  // A grade abriu ou fechou (por aqui, por ela ou pelo popup): o painel acompanha.
+  chrome.storage.onChanged.addListener((mud, area) => {
+    if (area !== "local" || !mud.visaoAtiva) return;
+    estado.fechado = mud.visaoAtiva.newValue !== false;
+    aplicar();
   });
 
   // O popup embutido avisa que subiu. Sem aviso, o iframe foi barrado (CSP da
@@ -196,7 +221,7 @@ if (window.top === window && !mnpEmContagem) {
   quandoTiverCorpo(() => {
     const aviso = document.createElement("div");
     aviso.className = "mnp-fundo";
-    aviso.textContent = "⛏️ Aba de contagem do Minerador — fecha sozinha ao terminar";
+    aviso.textContent = "🌊 Aba de contagem do WaveMiner — fecha sozinha ao terminar";
     document.body.appendChild(aviso);
   });
 }

@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 
 const AQUI = __dirname;
-const CONTENT = ["content.js", "overlay.js", "painel.js"];
+const CONTENT = ["content.js", "overlay.js", "visao.js", "painel.js"];
 const TODOS = ["background.js", "popup.js", "hook.js", ...CONTENT];
 const RE_TOPO = /^(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/gm;
 

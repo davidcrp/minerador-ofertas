@@ -6,14 +6,41 @@ const anuncios = new Map();
 
 // overlay.js roda no mesmo world isolado e lê daqui os dados já normalizados —
 // é o que alimenta os botões de cópia em cima de cada anúncio.
-window.__minerador = { anuncios };
+// visao.js também: `total` é a contagem da busca na Biblioteca e `aoMudar` avisa
+// que chegou anúncio novo.
+window.__minerador = { anuncios, total: null, aoMudar: null };
 
 // ------------------------------------------------------------------ captura
+
+// A Biblioteca troca de busca sem recarregar a página (você digita outro termo
+// na caixa dela). O que já estava capturado é da busca ANTERIOR: sem zerar, a
+// coleta seguinte mandava esses anúncios com o rótulo do termo novo — nicho
+// errado no painel e termo errado aprendido pela mineração automática.
+function chaveDaBusca() {
+  const s = new URLSearchParams(location.search);
+  return [(s.get("q") || "").trim().toLowerCase(), s.get("country") || "",
+          s.get("view_all_page_id") || ""].join("|");
+}
+let buscaAtual = chaveDaBusca();
+
+function conferirBusca() {
+  const agora = chaveDaBusca();
+  if (agora === buscaAtual) return;
+  buscaAtual = agora;
+  anuncios.clear();
+  enviados.clear();
+  window.__minerador.total = null;
+  if (window.__minerador.aoMudar) window.__minerador.aoMudar();
+}
+// O world isolado não enxerga o pushState da página: confere ao receber dados
+// (a URL muda antes de a busca nova responder) e de tempos em tempos.
+setInterval(conferirBusca, 1000);
 
 window.addEventListener("message", (ev) => {
   if (ev.source !== window) return;
   const d = ev.data;
   if (!d || d.__minerador !== "graphql") return;
+  conferirBusca();
   for (const obj of parseCorpos(d.corpo)) coletarDaArvore(obj);
 });
 
@@ -41,13 +68,27 @@ function coletarDaArvore(no) {
     for (const item of no) coletarDaArvore(item);
     return;
   }
+  const conexao = no.search_results_connection;
+  if (conexao && typeof conexao.count === "number") {
+    window.__minerador.total = conexao.count;
+    if (window.__minerador.aoMudar) window.__minerador.aoMudar();
+  }
   if (no.ad_archive_id) {
     const norm = normalizar(no);
     if (norm.ad_archive_id) {
       const antigo = anuncios.get(norm.ad_archive_id);
       if (!antigo) agendarEnvio();
       // Mantém a versão mais completa (às vezes o mesmo ad vem em 2 respostas).
-      anuncios.set(norm.ad_archive_id, antigo ? Object.assign({}, antigo, limparVazios(norm)) : norm);
+      // Nó sem `snapshot` é só uma referência ao anúncio: os padrões dele
+      // (ativo, 1 variação) não podem passar por cima do dado de verdade.
+      if (!antigo) {
+        anuncios.set(norm.ad_archive_id, norm);
+      } else if (no.snapshot) {
+        const junto = Object.assign({}, antigo, limparVazios(norm));
+        junto.variacoes = Math.max(antigo.variacoes || 1, norm.variacoes || 1);
+        anuncios.set(norm.ad_archive_id, junto);
+      }
+      if (window.__minerador.aoMudar) window.__minerador.aoMudar();
     }
   }
   for (const k in no) coletarDaArvore(no[k]);
@@ -158,6 +199,10 @@ function normalizar(bruto) {
     texto: corpo.slice(0, 1500),
     midia: midia.join("+"),
     variacoes: Number(bruto.collation_count || bruto.total || 1) || 1,
+    // só para a visão em grade
+    avatar: snap.page_profile_picture_url || "",
+    n_cartoes: cartoes.length,
+    collation_id: String(bruto.collation_id || ""),
   };
 }
 
@@ -221,21 +266,35 @@ addEventListener("keydown", (ev) => {
   if (coletando && ["Escape", "PageUp", "Home"].includes(ev.key)) pedidoParar = true;
 }, { passive: true });
 
-async function rolarAteJuntar({ alvo, timeoutMs, paradasMax = 12 }) {
+// Anúncio que pode virar oferta: tem link de site. Sem link, WhatsApp e perfil
+// são descartados na hora de enviar, então não contam para o alvo da coleta.
+function contarUteis() {
+  let n = 0;
+  for (const a of anuncios.values()) {
+    if (/^https?:\/\//.test(a.link_url || "")
+        && !/(^|\.)(facebook\.com|instagram\.com|wa\.me|whatsapp\.com|m\.me|fb\.me)$/i
+          .test((a.link_url.split("/")[2] || "").split(":")[0])) n++;
+  }
+  return n;
+}
+
+async function rolarAteJuntar({ alvo, timeoutMs, paradasMax = 12, soUteis = false }) {
   const inicio = Date.now();
   let parados = 0;
   let anterior = -1;
   coletando = true;
   pedidoParar = false;
+  const juntados = () => (soUteis ? contarUteis() : anuncios.size);
 
   try {
     // `paradasMax` é quantas rodadas sem anúncio novo antes de desistir. Com 5
     // (o valor antigo) uma pesquisa de 5 minutos morria em ~10 segundos: basta a
     // Biblioteca demorar para paginar.
-    while (anuncios.size < alvo && parados < paradasMax && !pedidoParar
+    while (juntados() < alvo && parados < paradasMax && !pedidoParar
            && Date.now() - inicio < timeoutMs) {
       const restam = Math.ceil((timeoutMs - (Date.now() - inicio)) / 1000);
-      mostrarFaixa(`Minerador coletando… ${anuncios.size} anúncios · ${restam}s`
+      mostrarFaixa(`WaveMiner coletando… ${anuncios.size} anúncios`
+        + (soUteis ? ` (${juntados()}/${alvo} com link de venda)` : "") + ` · ${restam}s`
         + " — role para cima ou Esc para parar");
       window.scrollTo(0, document.body.scrollHeight);
       // Alguns layouts paginam num container interno em vez do body.
@@ -291,6 +350,7 @@ chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
           alvo: msg.alvo || 50,
           timeoutMs: msg.timeoutMs || 300000,
           paradasMax: msg.paradasMax || 12,
+          soUteis: !!msg.soUteis,
         });
       responder({ anuncios: lista });
     })();
