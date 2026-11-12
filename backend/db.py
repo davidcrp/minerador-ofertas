@@ -12,6 +12,7 @@ import secrets
 
 import psycopg
 from psycopg.rows import dict_row
+from werkzeug.security import check_password_hash, generate_password_hash
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 VARS_URL = ("DATABASE_URL", "POSTGRES_URL", "POSTGRES_PRISMA_URL",
@@ -54,13 +55,23 @@ def get_db() -> psycopg.Connection:
                            prepare_threshold=None)
 
 
+# SHA-256 com sal é rápido demais para senha: quem pegar o banco testa bilhões
+# de palpites por segundo. PBKDF2 com 600 mil voltas custa ~0,3s por tentativa.
+# Hash antigo ("sal:sha256") continua valendo e é trocado no próximo login.
 def hash_senha(senha: str) -> str:
-    salt = secrets.token_hex(16)
-    h = hashlib.sha256((senha + salt).encode()).hexdigest()
-    return f"{salt}:{h}"
+    return generate_password_hash(senha, method="pbkdf2:sha256:600000")
+
+
+def senha_antiga(guardado: str) -> bool:
+    return not str(guardado or "").startswith(("pbkdf2:", "scrypt:"))
 
 
 def confere_senha(senha: str, guardado: str) -> bool:
+    if not senha_antiga(guardado):
+        try:
+            return check_password_hash(guardado, senha)
+        except Exception:
+            return False
     try:
         salt, h = guardado.split(":", 1)
         return secrets.compare_digest(
@@ -214,7 +225,71 @@ ALTER TABLE destinos  ADD COLUMN IF NOT EXISTS preco_moeda TEXT;
 ALTER TABLE anuncios  ADD COLUMN IF NOT EXISTS excluido_em TIMESTAMPTZ;
 -- capa comprimida em WebP; as antigas continuam JPEG
 ALTER TABLE capas     ADD COLUMN IF NOT EXISTS mime TEXT DEFAULT 'image/jpeg';
+-- quem leu a página (servidor ou o navegador de quem usa a extensão) e o que o
+-- site respondeu: 403/desafio não é "sem preço", é "não deu para ler"
+ALTER TABLE destinos  ADD COLUMN IF NOT EXISTS lido_por TEXT DEFAULT 'servidor';
+ALTER TABLE destinos  ADD COLUMN IF NOT EXISTS http_status INTEGER;
+-- 'poda' = escondido pela regra de low ticket (volta sozinho se o destino
+-- passar numa leitura melhor); 'manual' = o ✕ do painel, nunca volta sozinho
+ALTER TABLE anuncios  ADD COLUMN IF NOT EXISTS excluido_motivo TEXT;
+-- a poda e o join com destinos procuram por link: sem índice varriam a tabela
+CREATE INDEX IF NOT EXISTS idx_anuncios_link ON anuncios(link_url);
+CREATE INDEX IF NOT EXISTS idx_pesquisas_termo ON pesquisas(user_id, termo);
+-- foto diária de quantos anúncios ativos cada anunciante tinha: é o que mostra
+-- quem está crescendo
+CREATE TABLE IF NOT EXISTS historico (
+    user_id INTEGER NOT NULL,
+    page_id TEXT NOT NULL,
+    dia DATE NOT NULL DEFAULT CURRENT_DATE,
+    ativos INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, page_id, dia)
+);
+-- tentativas de login erradas, para travar força bruta
+CREATE TABLE IF NOT EXISTS falhas_login (
+    chave TEXT NOT NULL,
+    em TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_falhas_login ON falhas_login(chave, em);
 """
+
+
+# ---------------------------------------------------------------- trava de login
+
+JANELA_LOGIN_MIN = 15
+
+
+def login_travado(limites: dict[str, int]) -> bool:
+    """`limites` = {chave: máximo de erros na janela}. True se alguma estourou."""
+    conn = get_db()
+    try:
+        for chave, maximo in limites.items():
+            n = conn.execute(
+                "SELECT COUNT(*) AS c FROM falhas_login WHERE chave = %s"
+                " AND em > NOW() - make_interval(mins => %s)",
+                (chave, JANELA_LOGIN_MIN)).fetchone()["c"]
+            if n >= maximo:
+                return True
+        return False
+    finally:
+        conn.close()
+
+
+def anotar_falha_login(chaves) -> None:
+    conn = get_db()
+    with conn:
+        conn.cursor().executemany("INSERT INTO falhas_login (chave) VALUES (%s)",
+                                  [(c,) for c in chaves])
+        conn.execute("DELETE FROM falhas_login WHERE em < NOW() - INTERVAL '1 day'")
+    conn.close()
+
+
+def atualizar_hash(user_id: int, senha: str) -> None:
+    conn = get_db()
+    with conn:
+        conn.execute("UPDATE usuarios SET password_hash = %s WHERE id = %s",
+                     (hash_senha(senha), user_id))
+    conn.close()
+
 
 
 def init_db() -> str:

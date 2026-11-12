@@ -15,17 +15,46 @@ backend/    Flask: API da extensão, enriquecimento de destinos, painel web
 | Métrica | Origem |
 |---|---|
 | Anunciante (nome + page_id) | Ad Library |
-| Anúncios ativos | varredura profunda por anunciante (contagem real) ou soma do resultado da busca (parcial) |
+| Anúncios ativos | varredura profunda por anunciante (contagem real) ou soma das variações (`collation_count`) dos anúncios que apareceram na busca (parcial) |
 | Dias rodando | `start_date` do anúncio mais antigo |
 | Variações de criativo | `collation_count` |
 | Destino final | `link_url` do anúncio, com redirects resolvidos |
 | Gateway / plataforma | fingerprint no destino (host, links de checkout, marcadores no HTML) |
 | URL de checkout | link do gateway achado na página |
-| Preço | valor mais repetido na página, descartando parcelas |
+| Preço | nesta ordem: dado estruturado da página (JSON-LD / `product:price:amount`) → valor mais repetido, descartando parcelas → página de checkout → preço escrito na copy do anúncio |
 | Foto do produto | `og:image` do destino (poster do anúncio como reserva) |
 | Vídeo do anúncio | copiado da CDN da Meta para o Vercel Blob, toca na capa |
 | Copy | maior texto entre os anúncios |
-| Score | `anúncios_ativos × (1 + dias/30)` — escala ponderada por durabilidade |
+| Score | `escala × (1 + min(dias, 180)/30)`, onde escala = anúncios ativos do anunciante ou da **rede** (mesma oferta em várias páginas). ×1,3 **escalando**, ×1,2 **validada**, ×1,2 **crescendo**; cai até 30% se **sumida** (não vista há 14+ dias). Ver `pontuar` em `app.py` |
+
+## Sinais de cada oferta
+
+| Sinal | Quando |
+|---|---|
+| 🔥 escalando | 30+ dias no ar e criativo novo nos últimos 14 |
+| 📈 crescendo | 50% mais anúncios ativos (e +3) do que na foto mais antiga dos últimos 30 dias (tabela `historico`, uma linha por anunciante por dia de coleta) |
+| 🕸 N páginas | mesma oferta em várias páginas. A oferta é identificada pelo checkout (host + caminho) e, sem ele, pelo domínio da página de venda — `chave_oferta` em `app.py`. O filtro *agrupar mesma oferta* mostra uma linha por oferta |
+| não visto há Nd | o anúncio não apareceu em coleta nenhuma desde então. "Dias rodando" para de contar na última vez em que foi visto, e o score cai |
+| 🔒 site bloqueou a leitura | o destino respondeu 403 ou desafio anti-robô ao servidor. Fica como `bloqueado` em `destinos.status` e **não é podado** |
+
+"Dias rodando" sai de `start_date` a cada leitura; `dias_ativo` (gravado na
+coleta) ficou só como reserva para anúncio sem data.
+
+## Leitura pelo navegador
+
+O servidor roda em datacenter e é quem mais leva 403, desafio anti-robô e
+página camuflada. Com *Ler páginas de venda pelo meu navegador* ligado no popup
+(o Chrome pede permissão para ler qualquer site), a extensão:
+
+1. pede a fila em `GET /api/destinos/navegador` — destino `bloqueado`, ou lido
+   pelo servidor sem preço nem checkout, dos últimos 7 dias;
+2. baixa cada página daqui, sem cookies (`credentials: "omit"`);
+3. devolve o HTML em `POST /api/destinos/navegador`; a análise é a mesma do
+   servidor (`enrich._montar`).
+
+Cada destino tem uma segunda chance só (`destinos.lido_por = 'navegador'`).
+Anúncio escondido pela regra de low ticket (`excluido_motivo = 'poda'`) volta
+sozinho se o destino passar na leitura nova; o ✕ manual nunca volta sozinho.
 
 ## Subir o backend
 
@@ -40,6 +69,16 @@ Uma vez só, para criar o esquema e o seu usuário (PowerShell):
 
 ```bash
 $env:DATABASE_URL="postgresql://...-pooler.../neondb?sslmode=require"; $env:MINERADOR_ADMIN_SENHA="suaSenhaForte"; python minerador/backend/setup_db.py
+```
+
+Coluna, índice ou tabela nova entra em `MIGRACOES` (`db.py`) e é aplicada
+rodando o `setup_db.py` de novo — só acrescenta, nunca apaga. **Rode antes do
+deploy** quando o código novo usar coluna nova.
+
+Testes das regras (sem banco e sem rede):
+
+```bash
+cd minerador/backend && python -m unittest discover tests
 ```
 
 Depois, para rodar local:
@@ -84,8 +123,12 @@ O `background.js` orquestra:
 termo digitado sempre ganha, senão a opção sequestrava a pesquisa em silêncio. Aba
    nova só quando **nenhuma** aba da Biblioteca está aberta; nesse caso o status
    avisa ("Nenhuma aba da Biblioteca aberta — abrindo uma")
-2. coleta até o limite configurado, rolando a página
-3. descarta anúncios com menos dias que o filtro
+2. coleta até o limite configurado, rolando a página — o limite conta só
+   anúncio com link de site, que é o que pode virar oferta
+3. o tempo mínimo vai na URL (`start_date[max]`), então a Biblioteca já
+   devolve só anúncio com N+ dias; anunciante com menos anúncios ativos que
+   *Quantidade de anúncios* não é enviado. A busca sai ordenada por impressões
+   e termo entre aspas vira frase exata (`keyword_exact_phrase`)
 4. (opcional, **desligado por padrão**) para cada anunciante top, abre
    `view_all_page_id` **numa aba de segundo plano** e conta os anúncios ativos de
    verdade; a aba é fechada no fim. A URL dessa aba leva `#mn-contagem`: os
@@ -159,11 +202,20 @@ Isso importa porque uma coleta dura até o *Tempo por pesquisa* (padrão 300s).
 Sem freio, uma pesquisa disparada minutos antes continuava rolando a página
 "sozinha", sem nada na tela dizendo de onde vinha.
 
-**Pesquisa automática**: com o toggle ligado, qualquer visita manual à
-Biblioteca é capturada em segundo plano — **sem rolar a página**. Ela leva só o
-que a Biblioteca já carregou (`COLETAR` com `rolar: false`). Quem quiser a
-rolagem automática marca *Deixar a pesquisa automática rolar a página*; a
-rolagem continua sendo o padrão da pesquisa manual, que é quando você pediu.
+**Abrir a Biblioteca não minera nada.** Coleta e rolagem só começam por comando
+(PESQUISAR, MINERAR SOZINHO, recuperar fotos). O toggle opcional *Salvar o que eu
+abrir na Biblioteca* (desligado por padrão) envia os anúncios que a página
+carregar, **sem rolar a página**; a rolagem existe só na pesquisa manual.
+
+## Visão em grade
+
+`visao.js` desenha, em Shadow DOM por cima da Biblioteca, os anúncios que
+`content.js` já capturou: cards com dias no ar, variações e destino; filtros por
+tempo, variações, tipo de mídia, destino e anunciante; cópias do mesmo criativo
+agrupadas. Abrir a grade não coleta nem envia nada. **Carregar mais** rola a
+página e não envia; **Minerar esta busca** é a pesquisa normal e gasta 1 uso.
+Liga e desliga em *Ver Biblioteca*, no botão ▦ do painel ou nas configurações do
+popup (`visaoAtiva`).
 
 ## Painel flutuante na Biblioteca
 
@@ -264,7 +316,8 @@ Detalhes que importam:
 ## Filtros de low ticket
 
 **O minerador só guarda low ticket** (`backend/lowticket.py`): preço detectado
-até R$ 50, checkout ou plataforma de venda, destino que vende. A extensão já
+até R$ 50 (`MINERADOR_LOW_MAX` muda o teto; outras moedas são convertidas por
+`COTACAO_BRL`, que precisa ter a moeda — fora da tabela vale 0 e reprova), checkout ou plataforma de venda, destino que vende. A extensão já
 descarta anúncio sem link ou com link de app/perfil/WhatsApp; o backend faz o
 mesmo na ingestão e, depois de cada lote de enriquecimento, esconde
 (`excluido_em`, reversível) o que foi reprovado. Site fora do ar é refeito até
@@ -388,7 +441,24 @@ que não tem nada a ver com a oferta.
 Novos: acrescentar em `backend/gateways.py` (e no conjunto `PAGAMENTO`, se for
 meio de pagamento).
 
+## Acesso
+
+- Senha em PBKDF2 (600 mil voltas). Hash antigo (`sal:sha256`) continua
+  valendo e é trocado no primeiro login certo.
+- 8 senhas erradas por usuário+IP (ou 30 por IP) em 15 minutos travam o login
+  — `falhas_login`.
+- Sem usos (`usos_restantes = 0`, plano diferente de `admin`) a ingestão
+  responde 402: nada entra, nem envio passivo nem ★.
+- No painel, dado que vem do Facebook (nome da página) nunca entra em
+  atributo `on…`: reservas de capa viajam em `data-*`.
+
 ## Limites conhecidos
+
+- "Crescendo" compara contagens de coletas diferentes: sem varredura profunda,
+  uma busca mais funda vê mais anúncios do mesmo anunciante e parece
+  crescimento.
+- A mineração automática aposenta termo buscado 2+ vezes em 60 dias sem
+  nenhum anunciante aprovado (`autotermos.desempenho_dos_termos`).
 
 - Anúncio com CTA de WhatsApp não expõe o número (a Meta remove o parâmetro);
   esses ficam sem destino e sem gateway.
@@ -409,6 +479,7 @@ meio de pagamento).
 | POST | `/api/anunciantes` | contagem real por anunciante |
 | POST | `/api/enriquecer` | resolve um lote de destinos; devolve `pendentes` |
 | GET | `/api/saude` | checa a conexão com o banco |
+| GET/POST | `/api/destinos/navegador` | fila de destinos para a extensão ler / HTML lido por ela |
 | GET | `/api/ofertas` | ofertas agregadas (filtros: `min_anuncios`, `min_dias`, `gateway`, `pais`, `termo`, `q`) |
 | GET/POST | `/dados/favoritos` | lista / salva um anunciante em **Melhores** (sessão) |
 | POST | `/dados/favoritos/remover` | tira de Melhores |

@@ -194,8 +194,11 @@ def host(url: str) -> str:
 
 
 def _casa_dominio(h: str, dominios: list[str]) -> str | None:
+    # Só o domínio ou um subdomínio dele. O `d in h` que havia aqui casava
+    # pedaço de nome: "bold.co" dentro de "kobold.com", "hub.la" dentro de
+    # "hub.land" — site qualquer ganhava gateway e passava no corte de low ticket.
     for d in dominios:
-        if h == d or h.endswith("." + d) or d in h:
+        if h == d or h.endswith("." + d):
             return d
     return None
 
@@ -343,7 +346,92 @@ def moeda_da_pagina(html: str, url: str = "") -> str:
     return "USD"
 
 
-def achar_preco(html: str, url: str = "") -> str:
+def formatar_preco(valor: float, moeda: str) -> str:
+    """Texto no formato que `valor_e_moeda` lê de volta."""
+    if moeda == "BRL":
+        return "R$ " + f"{valor:.2f}".replace(".", ",")
+    return f"{moeda} {valor:.2f}"
+
+
+RE_LD = re.compile(r"""<script\b[^>]*type\s*=\s*["']application/ld\+json["'][^>]*>(.*?)</script>""",
+                   re.I | re.S)
+RE_LD_PRECO = re.compile(r'"(?:price|lowPrice)"\s*:\s*"?(\d+(?:[.,]\d+)?)"?')
+RE_LD_MOEDA = re.compile(r'"priceCurrency"\s*:\s*"([A-Za-z]{3})"')
+RE_META_TAG = re.compile(r"<meta\b[^>]*>", re.I)
+RE_META_ATRIB = re.compile(r"""(property|name|itemprop|content)\s*=\s*["']([^"']*)["']""", re.I)
+META_PRECO = ("product:price:amount", "og:price:amount", "product:sale_price:amount", "price")
+META_MOEDA = ("product:price:currency", "og:price:currency", "pricecurrency")
+
+
+def _num_estruturado(v: str) -> float:
+    """Dado estruturado usa ponto decimal ("19.90"); vírgula só por descuido."""
+    v = (v or "").strip()
+    if "," in v and "." not in v:
+        v = v.replace(",", ".")
+    try:
+        return float(v)
+    except ValueError:
+        return 0.0
+
+
+def preco_estruturado(html: str, url: str = "") -> tuple[str, float, str]:
+    """Preço que a própria página declara para máquina ler: JSON-LD de produto
+    (schema.org) e meta `product:price:amount`. É o preço de venda de verdade —
+    quando existe, ganha da heurística de "valor que mais se repete", que erra
+    em página cheia de preço riscado, bônus e order bump. Devolve
+    (texto, valor, moeda) ou ("", 0.0, "")."""
+    html = html or ""
+    valores, moeda = [], ""
+    for bloco in RE_LD.findall(html):
+        achados = [_num_estruturado(v) for v in RE_LD_PRECO.findall(bloco)]
+        if achados:
+            valores += achados
+            m = RE_LD_MOEDA.search(bloco)
+            moeda = moeda or (m.group(1).upper() if m else "")
+    if not valores:
+        for tag in RE_META_TAG.findall(html):
+            atrib = {k.lower(): v for k, v in RE_META_ATRIB.findall(tag)}
+            chave = (atrib.get("property") or atrib.get("name") or atrib.get("itemprop")
+                     or "").lower()
+            if chave in META_PRECO and atrib.get("content"):
+                valores.append(_num_estruturado(atrib["content"]))
+            elif chave in META_MOEDA and atrib.get("content"):
+                moeda = moeda or atrib["content"].strip().upper()[:3]
+    moeda = moeda or moeda_da_pagina(html, url)
+    minimo, maximo = FAIXA_MOEDA.get(moeda, (3, 5_000))
+    validos = [v for v in valores if minimo <= v <= maximo]
+    if not validos:
+        return ("", 0.0, "")
+    # O primeiro é o produto da página; os seguintes costumam ser "relacionados".
+    valor = validos[0]
+    return (formatar_preco(valor, moeda), valor, moeda)
+
+
+MOEDA_POR_PAIS = {"BR": "BRL", "PT": "EUR", "ES": "EUR", "MX": "MXN", "AR": "ARS",
+                  "CO": "COP", "CL": "CLP", "PE": "PEN", "UY": "UYU", "EC": "USD", "US": "USD"}
+
+# Na copy, "R$" também aparece como promessa de ganho, não como preço:
+# "fature R$ 300 por dia", "ganhe até R$ 5.000", "R$ 2.000 por mês".
+RE_GANHO = re.compile(
+    r"(?:\b(?:ganh\w+|fatur\w+|lucr\w+|rend\w+|vend\w+|economiz\w+|receb\w+|gan[ae]\w*|"
+    r"factur\w+|ahorr\w+|at[eé]|hasta|mais\s+de|m[aá]s\s+de)\s+(?:at[eé]\s+|hasta\s+|mais\s+de\s+)?"
+    r"(?:R\$|US\$|\$)\s?[\d.,]+)"
+    r"|(?:(?:R\$|US\$|\$)\s?[\d.,]+\s*(?:por|ao|al|/)\s*(?:dia|d[ií]a|m[eê]s|mes|semana|hora|ano|año))",
+    re.I)
+
+
+def preco_da_copy(texto: str, pais: str = "BR") -> tuple[str, float, str]:
+    """Preço escrito no próprio anúncio ("por apenas R$ 19,90"). Página de venda
+    de low ticket muitas vezes esconde o preço (só aparece no checkout); o
+    anúncio, não — é gatilho de copy. Devolve (texto, valor, moeda)."""
+    moeda_padrao = MOEDA_POR_PAIS.get((pais or "").upper(), "BRL")
+    limpo = RE_GANHO.sub(" ", texto or "")
+    preco = achar_preco(limpo, moeda_padrao=moeda_padrao)
+    valor, moeda = valor_e_moeda(preco, moeda_padrao)
+    return (preco, valor, moeda) if valor > 0 else ("", 0.0, "")
+
+
+def achar_preco(html: str, url: str = "", moeda_padrao: str = "") -> str:
     """Preço da oferta. Descarta parcelas ("12x de R$ 7,50", "12 cuotas de
     $2.500") e valores fora da faixa plausível da moeda, e fica com o que mais
     se repete na página — o preço cheio costuma aparecer em vários lugares
@@ -353,7 +441,7 @@ def achar_preco(html: str, url: str = "") -> str:
     # Espaços juntados: a quebra de linha que sobra das tags empurrava o "5 x de"
     # para fora da janela que o filtro de parcela olha.
     texto = re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html or "")))
-    padrao = moeda_da_pagina(texto, url)
+    padrao = moeda_padrao or moeda_da_pagina(texto, url)
     contagem: dict[str, int] = {}
     valores: dict[str, float] = {}
     for m in RE_PRECO.finditer(texto):

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Minerador de Ofertas — Ad Library",
-  "version": "1.5.2",
+  "name": "WaveMiner — Ad Library",
+  "version": "1.10.0",
   "description": "Pesquisa automática na Biblioteca de Anúncios do Facebook: anunciante, anúncios ativos, tempo rodando, destino e gateway.",
   "permissions": [
     "storage",
@@ -21,7 +21,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Minerador de Ofertas"
+    "default_title": "WaveMiner"
   },
   "content_scripts": [
     {
@@ -42,6 +42,7 @@
       "js": [
         "content.js",
         "overlay.js",
+        "visao.js",
         "painel.js"
       ],
       "css": [

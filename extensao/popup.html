@@ -7,7 +7,7 @@
 <body>
 
 <header>
-  <div class="logo">⛏️ <span>minerador<b>.ofertas</b></span></div>
+  <div class="logo" style="display:flex;align-items:center;gap:7px"><svg viewBox="0 0 28 18" width="20" height="13" fill="none" stroke="#3b8fff" stroke-width="2.4" stroke-linecap="round" style="display:block" aria-hidden="true"><path d="M2 7c4-5 7-5 10-1.500s7 3.500 14-1.500"/><path d="M2 14c4-5 7-5 10-1.500s7 3.500 14-1.500" opacity=".5"/></svg><span>Wave<b>Miner</b></span></div>
   <div class="icones">
     <button id="ir-dashboard" title="Abrir painel">🏠</button>
     <button id="ir-config" title="Configurações">⚙️</button>
@@ -39,7 +39,7 @@
 
   <label class="campo">Nicho / palavra-chave
     <div class="linha-termo">
-      <input id="termo" placeholder="ex: receitas fit, planilha, ebook">
+      <input id="termo" placeholder='ex: receitas fit — ou "por apenas r$" (aspas = frase exata)' title='Entre aspas a Biblioteca busca a frase exata; sem aspas, as palavras soltas em qualquer ordem.'>
       <button id="btn-add-fila" title="Adicionar à fila">＋</button>
     </div>
   </label>
@@ -69,7 +69,7 @@
   </div>
 
   <div class="grupo">
-    <div class="rot">Quantidade de anúncios <span class="i" title="Mínimo de anúncios ativos para o anunciante entrar no resultado">ⓘ</span></div>
+    <div class="rot">Quantidade de anúncios <span class="i" title="Mínimo de anúncios ativos do anunciante (conta as variações do mesmo criativo). Quem tem menos não é enviado ao painel.">ⓘ</span></div>
     <div class="slider">
       <input type="range" id="min-ads" min="1" max="50" value="2">
       <input type="number" id="min-ads-n" min="1" max="50" value="2">
@@ -78,7 +78,7 @@
   </div>
 
   <div class="grupo">
-    <div class="rot">Tempo de atividade <span class="i" title="Mínimo de dias que o anúncio já está rodando">ⓘ</span></div>
+    <div class="rot">Tempo de atividade <span class="i" title="Mínimo de dias que o anúncio já está rodando. O corte é feito na própria Biblioteca, então a coleta não gasta tempo com anúncio novo.">ⓘ</span></div>
     <div class="slider">
       <input type="range" id="min-dias" min="0" max="180" value="3">
       <input type="number" id="min-dias-n" min="0" max="365" value="3">
@@ -132,19 +132,22 @@
 
   <div class="item toggle-linha">
     <label class="switch"><input type="checkbox" id="auto"><span></span></label>
-    <span>Pesquisa automática <span class="i" title="Captura o que você abrir na Biblioteca, sem rolar a página">ⓘ</span></span>
+    <span>Salvar o que eu abrir na Biblioteca <span class="i" title="Desligado: abrir a Biblioteca não envia nada. Ligado: envia ao WaveMiner os anúncios que a página carregar, sem rolar a página.">ⓘ</span></span>
   </div>
-  <label class="check" style="margin:-4px 0 10px 2px"><input type="checkbox" id="auto-rolar">
-    Deixar a pesquisa automática rolar a página</label>
 
   <button class="item" id="tg-pesquisa">⚙️ Configurações de pesquisa <span class="i">ⓘ</span></button>
   <div class="painel" id="painel-pesquisa" hidden>
     <label class="check"><input type="checkbox" id="painel-flutuante" checked>
       Painel flutuante dentro da Biblioteca</label>
+    <label class="check"><input type="checkbox" id="visao-grade" checked>
+      Visão em grade na Biblioteca</label>
     <label class="check"><input type="checkbox" id="abrir-sozinho" checked>
       Abrir a extensão ao entrar na Biblioteca</label>
     <label class="check"><input type="checkbox" id="abrir-painel">
       Abrir o painel web ao terminar a pesquisa</label>
+    <label class="check"><input type="checkbox" id="ler-navegador">
+      Ler páginas de venda pelo meu navegador
+      <span class="i" title="Muito site de oferta barra o servidor (403, anti-robô, página camuflada) e a oferta fica sem preço. Ligado, a extensão baixa essas páginas daqui, com o seu IP e sem enviar seus cookies, e manda o conteúdo para o WaveMiner analisar. O Chrome vai pedir permissão para ler qualquer site.">ⓘ</span></label>
     <label class="campo-inline">Máx. anúncios coletados
       <input type="number" id="max-anuncios" value="150" min="10" max="500">
     </label>
@@ -168,7 +171,7 @@
 
   <div class="auto-caixa">
     <div class="rot">🤖 Mineração automática de low ticket
-      <span class="i" title="Fica buscando sozinho, uma busca atrás da outra, com palavras-chave que costumam achar low ticket (as que já renderam no seu minerador, datas comemorativas próximas e gatilhos como &quot;acesso imediato&quot;, &quot;pagamento único&quot;). Tudo vai para o minerador. Use o ■ PARAR para interromper.">ⓘ</span></div>
+      <span class="i" title="Fica buscando sozinho, uma busca atrás da outra, com palavras-chave que costumam achar low ticket (as que já renderam no seu WaveMiner, datas comemorativas próximas e gatilhos como &quot;acesso imediato&quot;, &quot;pagamento único&quot;). Tudo vai para o WaveMiner. Use o ■ PARAR para interromper.">ⓘ</span></div>
     <div class="auto-linha">
       <select id="auto-min">
         <option value="5">5 min</option>

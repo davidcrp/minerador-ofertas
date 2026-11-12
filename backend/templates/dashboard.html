@@ -313,6 +313,7 @@
       <input type="number" id="f-preco-max" min="0" step="1" placeholder="até ∞"></div></div>
     <div class="checks">
       <label title="Preço detectado até R$ 50 (ou o valor em &quot;até&quot;), com página de checkout e site que vende. Sem preço, perfil, app e WhatsApp ficam de fora."><input type="checkbox" id="f-low"> ⚡ só low ticket</label>
+      <label title="Mostra uma linha por oferta: quando o mesmo checkout ou site é anunciado por várias páginas, fica a mais forte e a etiqueta diz quantas são."><input type="checkbox" id="f-agrupar"> agrupar mesma oferta</label>
       <label><input type="checkbox" id="f-com-foto"> com foto</label>
       <label><input type="checkbox" id="f-com-preco"> com preço</label>
       <label><input type="checkbox" id="f-so-venda"> só quem vende</label>
@@ -405,6 +406,7 @@ function params() {
   if ($("#f-so-venda").checked) p.set("so_venda", "1");
   if ($("#f-low").checked) p.set("low", "1");
   if ($("#f-com-foto").checked) p.set("com_foto", "1");
+  if ($("#f-agrupar").checked) p.set("agrupar", "1");
   return p;
 }
 
@@ -468,7 +470,7 @@ function pintarGateways() {
   const sel = $("#f-gw"), atual = sel.value;
   const gws = [...new Set(dados.map(o => o.gateway).filter(Boolean))].sort();
   sel.innerHTML = '<option value="">todos</option>' +
-    gws.map(g => `<option${g === atual ? " selected" : ""}>${g}</option>`).join("");
+    gws.map(g => `<option${g === atual ? " selected" : ""}>${esc(g)}</option>`).join("");
 }
 
 // O filtro de país é aplicado no servidor, então a lista já vem reduzida:
@@ -478,11 +480,11 @@ function pintarPaises() {
   const vistos = new Set(dados.flatMap(o => o.paises || []));
   if (atual) vistos.add(atual);
   sel.innerHTML = '<option value="">todos</option>' +
-    [...vistos].sort().map(p => `<option${p === atual ? " selected" : ""}>${p}</option>`).join("");
+    [...vistos].sort().map(p => `<option${p === atual ? " selected" : ""}>${esc(p)}</option>`).join("");
 }
 
 function esc(s) {
-  return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 // "R$ 1.299,90" / "$25.000" -> número, para ordenar preço de verdade.
@@ -541,44 +543,75 @@ const acoesHTML = (o) => `
   </div>`;
 
 // Ordem da capa: vídeo copiado para o Blob > poster/og:image > nome.
-// Nada de apontar para a CDN da Meta — aquela URL é assinada e morre em horas.
-// Troca a imagem pela próxima fonte da lista; acabando, mostra o texto.
-function mnTrocarFonte(img, semTexto) {
-  let resto = [];
-  try { resto = JSON.parse(img.dataset.resto || "[]"); } catch (e) { /* nada */ }
-  const proxima = resto.shift();
-  if (!proxima) {
-    img.outerHTML = `<div class="sem">${semTexto}</div>`;
-    return;
+//
+// Nada de `onerror="...${nome}..."`: o nome da página vem do Facebook, quem
+// escolhe é o anunciante. Dentro de um atributo o navegador desfaz o escape
+// antes de rodar o JavaScript — um nome com aspa ou com <img onerror=…> virava
+// código rodando no painel logado. As reservas viajam em data-* (dado, nunca
+// código) e um único ouvinte troca a fonte que falhou.
+document.addEventListener("error", (ev) => {
+  const el = ev.target;
+  if (!(el instanceof HTMLElement) || el.dataset.sem === undefined) return;
+  const vazio = () => {
+    const d = document.createElement("div");
+    d.className = "sem";
+    d.textContent = el.dataset.sem;
+    el.replaceWith(d);
+  };
+  if (el.tagName === "VIDEO") {
+    // Vídeo pode ter sido apagado pela limpeza do Blob: cai na imagem.
+    if (!el.dataset.reserva) return vazio();
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.referrerPolicy = "no-referrer";
+    img.dataset.sem = el.dataset.sem;
+    img.dataset.resto = "[]";
+    img.src = el.dataset.reserva;
+    return el.replaceWith(img);
   }
-  img.dataset.resto = JSON.stringify(resto);
-  img.src = proxima;
-}
+  let resto = [];
+  try { resto = JSON.parse(el.dataset.resto || "[]"); } catch (e) { /* nada */ }
+  const proxima = resto.shift();
+  if (!proxima) return vazio();
+  el.dataset.resto = JSON.stringify(resto);
+  el.src = proxima;
+}, true);     // `error` não borbulha: só a fase de captura enxerga
 
 const fotoHTML = (o, semTexto = "—") => {
-  // Vídeo pode ter sido apagado pela limpeza do Blob: sem reserva, sobra um
-  // quadro preto. O onerror troca pela imagem, e a imagem tem o dela.
   if (o.video) {
-    const reserva = o.poster || o.imagem;
-    const trocaVideo = reserva
-      ? `this.outerHTML='<img src=&quot;${esc(reserva)}&quot; loading=&quot;lazy&quot; referrerpolicy=&quot;no-referrer&quot;>'`
-      : `this.outerHTML='<div class=&quot;sem&quot;>${esc(semTexto)}</div>'`;
     return `<video src="${esc(o.video)}" ${o.poster ? `poster="${esc(o.poster)}"` : ""}
                    muted loop playsinline autoplay preload="metadata"
-                   onerror="${trocaVideo}"></video>`;
+                   data-reserva="${esc(o.poster || o.imagem || "")}"
+                   data-sem="${esc(semTexto)}"></video>`;
   }
   // Corrente de reserva: criativo do anúncio → og:image do destino → nome.
-  // URL da CDN da Meta expira em dias; sem a troca no onerror a capa somia e
-  // sobrava um quadro vazio mesmo havendo outra imagem disponível.
+  // URL da CDN da Meta expira em dias; sem a troca a capa somia e sobrava um
+  // quadro vazio mesmo havendo outra imagem disponível.
   const fontes = [o.imagem, o.imagem_anuncio, o.imagem_site].filter(Boolean);
   if (fontes.length) {
-    const proxima = fontes.slice(1)
-      .map((u) => `&quot;${esc(u)}&quot;`).join(",");
     return `<img src="${esc(fontes[0])}" alt="" loading="lazy" referrerpolicy="no-referrer"
-                 data-resto="[${proxima}]"
-                 onerror="mnTrocarFonte(this, '${esc(semTexto)}')">`;
+                 data-resto="${esc(JSON.stringify(fontes.slice(1)))}"
+                 data-sem="${esc(semTexto)}">`;
   }
   return `<div class="sem">${esc(semTexto)}</div>`;
+};
+
+// Sinais que explicam o score. Números passam por Number(): o retrato de
+// Melhores vem do que foi salvo, não dá para confiar no tipo.
+const sinaisHTML = (o) => {
+  const t = (texto, dica) => `<span class="tag" title="${esc(dica)}">${esc(texto)}</span>`;
+  const n = (v) => Number(v) || 0;
+  return [
+    o.escalando ? t("🔥 escalando", "Oferta com 30+ dias que subiu criativo novo nos últimos 14") : "",
+    o.crescendo ? t(`📈 +${n(o.anuncios_ativos) - n(o.ativos_antes)} em ${n(o.ativos_antes_ha)}d`,
+      `Tinha ${n(o.ativos_antes)} anúncios ativos há ${n(o.ativos_antes_ha)} dias, agora ${n(o.anuncios_ativos)}`) : "",
+    n(o.rede_paginas) > 1 ? t(`🕸 ${n(o.rede_paginas)} páginas · ${n(o.rede_ativos)} anúncios`,
+      "Mesma oferta (mesmo checkout ou site) anunciada também por: " + (o.rede_nomes || []).join(", ")) : "",
+    o.sumida ? t(`não visto há ${n(o.visto_ha)}d`,
+      "Não apareceu em nenhuma coleta desde então: pode ter parado. O score cai com o tempo.") : "",
+    o.bloqueado ? t("🔒 site bloqueou a leitura",
+      "O site não deixou o servidor ler a página (403 ou desafio anti-robô). Ligue \"Ler páginas pelo meu navegador\" na extensão.") : "",
+  ].join("");
 };
 
 // Cor do avatar sai do nome: o mesmo anunciante tem sempre a mesma cor.
@@ -615,10 +648,11 @@ function pintarCartoes(itens) {
         <div class="pe">
           ${o.preco ? `<span class="preco">${esc(o.preco)}</span>` : ""}
           ${o.gateway ? `<span class="tag gw">${esc(o.gateway)}</span>` : '<span class="tag">sem gateway</span>'}
-          <span class="tag" title="anúncios ativos × tempo rodando">score ${o.score}</span>
+          <span class="tag" title="anúncios ativos (da rede, se a oferta roda em várias páginas) × tempo rodando (até 180 dias), com bônus para escalando, crescendo e low ticket validado; cai se não é visto há mais de 14 dias">score ${esc(o.score)}</span>
+          ${sinaisHTML(o)}
         </div>
         <div class="botoes">
-          ${o.url_biblioteca ? `<a href="${o.url_biblioteca}" target="_blank" rel="noopener">Ver na Biblioteca</a>` : "<span></span>"}
+          ${o.url_biblioteca ? `<a href="${esc(o.url_biblioteca)}" target="_blank" rel="noopener">Ver na Biblioteca</a>` : "<span></span>"}
           ${o.destino && !o.sem_lp ? `<a class="forte" href="${esc(o.destino)}" target="_blank" rel="noopener noreferrer">Abrir LP ↗</a>`
             : (o.checkout_url || o.destino ? `<a class="forte" href="${esc(o.checkout_url || o.destino)}" target="_blank" rel="noopener noreferrer">Checkout ↗</a>` : "")}
         </div>
@@ -667,12 +701,12 @@ function pintarTabela(itens) {
              <div class="foto-rot">${o.imagem_do_site ? "do site"
              : o.imagem_e_reserva ? "do anúncio*" : "do anúncio"}</div>`
           : '<div class="foto-vazia">—</div>')}</td>
-      <td class="num">${o.score}</td>
+      <td class="num">${esc(o.score)}<div class="sub">${sinaisHTML(o)}</div></td>
       <td>
         <div class="nome">${esc(o.page_name)}
           ${o.recuperado ? '<span class="tag rec" title="Retrato remontado: sem métricas até a próxima coleta">recuperado</span>' : ""}</div>
         <div class="sub">${(o.termos || []).map(esc).join(", ")}${(o.paises || []).length ? " · " + o.paises.map(esc).join("/") : ""}${o.salvo_em ? " · salvo em " + esc(o.salvo_em) : ""}</div>
-        ${o.url_biblioteca ? `<a class="sub" href="${o.url_biblioteca}" target="_blank" rel="noopener">ver na biblioteca ↗</a>` : ""}
+        ${o.url_biblioteca ? `<a class="sub" href="${esc(o.url_biblioteca)}" target="_blank" rel="noopener">ver na biblioteca ↗</a>` : ""}
       </td>
       <td class="num">${o.anuncios_ativos}
         ${o.contagem_real ? '<span class="tag real">real</span>' : '<span class="tag vazio">parcial</span>'}
@@ -863,6 +897,7 @@ const lembrar = (id, chave, padrao) => {
 };
 lembrar("#f-low", "mn_low", true);
 lembrar("#f-com-foto", "mn_com_foto", false);
+lembrar("#f-agrupar", "mn_agrupar", true);
 
 $("#btn-limpar-filtros").onclick = () => {
   $("#f-ads").value = 1; $("#f-dias").value = 0;

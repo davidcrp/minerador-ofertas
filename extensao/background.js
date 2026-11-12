@@ -6,17 +6,22 @@ const PADRAO_API = "https://minerador-ofertas-umber.vercel.app";
 // ------------------------------------------------------------------ estado
 
 async function cfg() {
-  const s = await chrome.storage.local.get(["apiUrl", "token", "auto", "abrirSozinho",
-                                          "painelFlutuante", "autoRolar"]);
+  const s = await chrome.storage.local.get(["apiUrl", "token", "capturaPassiva", "abrirSozinho",
+                                          "painelFlutuante"]);
   return {
     apiUrl: (s.apiUrl || PADRAO_API).replace(/\/$/, ""),
     token: s.token || "",
-    auto: !!s.auto,
+    capturaPassiva: !!s.capturaPassiva,      // desligada por padrão
     abrirSozinho: s.abrirSozinho !== false,  // ligado por padrão
     painelFlutuante: s.painelFlutuante !== false,
-    autoRolar: !!s.autoRolar,   // automática não rola sem você pedir
   };
 }
+
+// Chaves antigas faziam a mineração começar ao abrir a Biblioteca. Quem já tinha
+// o toggle ligado volta para o desligado: minerar só com comando explícito.
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.remove(["auto", "autoRolar"]);
+});
 
 // O service worker do MV3 é encerrado quando fica ocioso — e uma pesquisa de
 // 5 minutos passa por vários desses momentos. Estado em memória some junto:
@@ -67,7 +72,17 @@ async function status(texto, extra = {}) {
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function montarUrl({ termo, pageId, pais = "BR", ativos = true, idioma = "" }) {
+// Termo entre aspas pede a frase exata, igual na Biblioteca (e igual visao.js).
+const fraseExata = (termo) => /^".+"$/.test(String(termo || "").trim());
+
+// AAAA-MM-DD de N dias atrás, no fuso de quem está usando.
+function diaAtras(n) {
+  const d = new Date(Date.now() - n * 86400000);
+  const dois = (v) => String(v).padStart(2, "0");
+  return `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`;
+}
+
+function montarUrl({ termo, pageId, pais = "BR", ativos = true, idioma = "", minDias = 0 }) {
   const p = [
     `active_status=${ativos ? "active" : "all"}`,
     "ad_type=all",
@@ -77,8 +92,21 @@ function montarUrl({ termo, pageId, pais = "BR", ativos = true, idioma = "" }) {
   // Filtro de idioma da Biblioteca: com país hispano + idioma "es" a busca
   // deixa de trazer anúncio em inglês/português rodando no mesmo mercado.
   if (idioma) p.push(`content_languages[0]=${encodeURIComponent(idioma)}`);
-  if (pageId) p.push(`view_all_page_id=${encodeURIComponent(pageId)}`, "search_type=page");
-  else p.push(`q=${encodeURIComponent(termo || "")}`, "search_type=keyword_unordered");
+  if (pageId) {
+    p.push(`view_all_page_id=${encodeURIComponent(pageId)}`, "search_type=page");
+  } else {
+    termo = String(termo || "").trim();
+    p.push(`q=${encodeURIComponent(termo)}`,
+      `search_type=${fraseExata(termo) ? "keyword_exact_phrase" : "keyword_unordered"}`,
+      // quem mais entrega primeiro: o topo da busca é o que está escalando
+      "sort_data[mode]=total_impressions", "sort_data[direction]=desc");
+    // O corte de tempo mínimo vai para a própria Biblioteca. Antes ela devolvia
+    // tudo e o filtro jogava fora depois: com 7+ dias, boa parte do limite de
+    // coleta e do tempo de rolagem ia embora em anúncio novo demais.
+    // A Biblioteca lê a data como "antes de": pedir (minDias - 1) dias atrás
+    // devolve o que começou há minDias ou mais.
+    if (minDias > 0) p.push(`start_date[max]=${diaAtras(minDias - 1)}`);
+  }
   return "https://www.facebook.com/ads/library/?" + p.join("&");
 }
 
@@ -87,8 +115,13 @@ function montarUrl({ termo, pageId, pais = "BR", ativos = true, idioma = "" }) {
 function mesmaBusca(a, b) {
   try {
     const [x, y] = [new URL(a).searchParams, new URL(b).searchParams];
-    return ["q", "country", "active_status", "view_all_page_id"]
-      .every((k) => (x.get(k) || "") === (y.get(k) || ""));
+    const igual = (k) => (x.get(k) || "") === (y.get(k) || "");
+    if (!["q", "country", "active_status", "view_all_page_id", "start_date[max]"].every(igual)) {
+      return false;
+    }
+    // frase exata e palavras soltas são buscas diferentes com o mesmo `q`
+    const exata = (s) => s.get("search_type") === "keyword_exact_phrase";
+    return exata(x) === exata(y);
   } catch (e) {
     return false;
   }
@@ -152,9 +185,12 @@ async function esperarPronto(tabId, tentativas = 40) {
   throw new Error("A aba da Biblioteca de Anúncios não respondeu. Faça login no Facebook e tente de novo.");
 }
 
-async function coletarNaAba(tabId, alvo, timeoutMs, paradasMax, rolar = true) {
+// `soUteis`: o alvo conta só anúncio com link de site. Anúncio sem link (ou de
+// WhatsApp/perfil) é descartado depois, então contá-lo fazia a coleta parar
+// "cheia" com metade do que prometia.
+async function coletarNaAba(tabId, alvo, timeoutMs, paradasMax, rolar = true, soUteis = false) {
   const r = await chrome.tabs.sendMessage(tabId,
-    { tipo: "COLETAR", alvo, timeoutMs, paradasMax, rolar });
+    { tipo: "COLETAR", alvo, timeoutMs, paradasMax, rolar, soUteis });
   return (r && r.anuncios) || [];
 }
 
@@ -177,6 +213,11 @@ async function api(caminho, corpo, metodo = "POST") {
   if (resp.status === 503) {
     const j = await resp.json().catch(() => ({}));
     throw new Error(j.erro || "Servidor indisponível no momento.");
+  }
+  if (resp.status === 402) {
+    const j = await resp.json().catch(() => ({}));
+    await chrome.storage.local.set({ usos: 0 });
+    throw new Error(j.erro || "Seus usos acabaram.");
   }
   if (!resp.ok) throw new Error(`Backend respondeu ${resp.status}`);
   return resp.json();
@@ -213,6 +254,68 @@ async function moerMidias(pendentes, maxRodadas = 60) {
       break;
     }
   }
+}
+
+// ------------------------------------------------------------------ leitura pelo navegador
+
+// O servidor roda em datacenter e é barrado por muito site de oferta (403,
+// desafio anti-robô, página "branca" de cloaker). Este navegador tem IP de casa
+// e é um Chrome de verdade: ele baixa a página e manda o HTML para o servidor
+// analisar. Só roda com a opção ligada no popup — é ela que pede a permissão
+// para ler qualquer site. Sem cookies (`credentials: "omit"`): o site de
+// destino não recebe nenhuma sessão sua.
+async function podeLerSites() {
+  const s = await chrome.storage.local.get("lerNoNavegador");
+  if (!s.lerNoNavegador) return false;
+  try {
+    return await chrome.permissions.contains({ origins: ["*://*/*"] });
+  } catch (e) {
+    return false;
+  }
+}
+
+async function baixarPagina(url) {
+  const controle = new AbortController();
+  const prazo = setTimeout(() => controle.abort(), 12000);
+  try {
+    const r = await fetch(url, { credentials: "omit", redirect: "follow", cache: "no-store",
+                                 signal: controle.signal });
+    const tipo = r.headers.get("content-type") || "";
+    const html = /html|text/i.test(tipo) ? (await r.text()).slice(0, 400000) : "";
+    return { url, url_final: r.url || url, status: r.status, html };
+  } catch (e) {
+    return { url, url_final: url, status: 0, html: "" };
+  } finally {
+    clearTimeout(prazo);
+  }
+}
+
+async function lerPeloNavegador(maxPaginas = 24) {
+  if (!(await podeLerSites())) return 0;
+  let aproveitados = 0;
+  for (let feitas = 0; feitas < maxPaginas;) {
+    if (await pediramParar()) break;
+    let lote;
+    try {
+      lote = await api("/api/destinos/navegador?limite=3", null, "GET");
+    } catch (e) {
+      console.warn("fila do navegador falhou", e);
+      break;
+    }
+    if (!lote.urls || !lote.urls.length) break;
+    await status(`Lendo páginas pelo seu navegador… faltam ${lote.pendentes}`);
+    const itens = await Promise.all(lote.urls.map(baixarPagina));
+    feitas += itens.length;
+    try {
+      const r = await api("/api/destinos/navegador", { itens });
+      aproveitados += r.aproveitados || 0;
+      if (!r.lidos) break;                 // o servidor não aceitou nenhum: não insiste
+    } catch (e) {
+      console.warn("envio das páginas falhou", e);
+      break;
+    }
+  }
+  return aproveitados;
 }
 
 // ------------------------------------------------------------------ só low ticket
@@ -253,7 +356,8 @@ async function pesquisar(p) {
     // "Usar a busca aberta": nada de navegar — coleta o que já está na tela e
     // tira o termo/país da própria URL, para a pesquisa ser salva com o rótulo
     // certo.
-    const alvo = montarUrl({ termo: p.termo, pais: p.pais, idioma: p.idioma, ativos: true });
+    const alvo = montarUrl({ termo: p.termo, pais: p.pais, idioma: p.idioma, ativos: true,
+                             minDias: p.minDias });
 
     // Termo digitado sempre ganha: "usar a busca aberta" vale para quando você
     // não pediu termo nenhum. Antes a opção sequestrava a pesquisa e coletava
@@ -275,7 +379,7 @@ async function pesquisar(p) {
       await status(INTERROMPIDA + " Nada foi coletado.", { concluido: true });
       throw new Error(INTERROMPIDA);
     }
-    const brutos = await coletarNaAba(tabId, p.maxAnuncios, p.timeoutMs, p.paradasMax);
+    const brutos = await coletarNaAba(tabId, p.maxAnuncios, p.timeoutMs, p.paradasMax, true, true);
     // Parou no meio da rolagem: o que já veio é salvo, o resto do trabalho não.
     const parou = await pediramParar();
     if (parou && !brutos.length) {
@@ -338,7 +442,43 @@ async function pesquisar(p) {
     const mapa = new Map();
     for (const a of todos) mapa.set(a.ad_archive_id, a);
     const coletados = mapa.size;
-    const lista = [...mapa.values()].filter(podeSerLow);
+    const comLink = [...mapa.values()].filter(podeSerLow);
+
+    // "Quantidade de anúncios" do popup: o valor era enviado ao servidor e
+    // nunca filtrava nada. A força do anunciante é a soma das variações dos
+    // anúncios dele que apareceram (um cartão "12 anúncios usam esse criativo"
+    // vale 12) ou a contagem real da varredura, a que for maior.
+    const minAds = Math.max(1, Number(p.minAnuncios) || 1);
+    const forca = new Map();
+    for (const a of mapa.values()) {
+      if (a.page_id && a.is_active !== false) {
+        forca.set(a.page_id, (forca.get(a.page_id) || 0) + (a.variacoes || 1));
+      }
+    }
+    for (const x of anunciantes) {
+      forca.set(x.page_id, Math.max(forca.get(x.page_id) || 0, x.total_ativos || 0));
+    }
+    // A mesma oferta costuma rodar em várias páginas, cada uma com 1 ou 2
+    // anúncios: página a página nenhuma passaria no mínimo, e é justamente a
+    // operação que está escalando. O mínimo vale também para o destino.
+    const destinoDe = (a) => {
+      try {
+        const u = new URL(a.link_url);
+        return u.hostname.replace(/^www\./, "").toLowerCase() + u.pathname.replace(/\/$/, "");
+      } catch (e) {
+        return "";
+      }
+    };
+    const forcaDestino = new Map();
+    for (const a of comLink) {
+      if (a.is_active === false) continue;
+      const d = destinoDe(a);
+      if (d) forcaDestino.set(d, (forcaDestino.get(d) || 0) + (a.variacoes || 1));
+    }
+    const lista = comLink.filter((a) => !a.page_id
+      || (forca.get(a.page_id) || 0) >= minAds
+      || (forcaDestino.get(destinoDe(a)) || 0) >= minAds);
+    const fracos = comLink.length - lista.length;
 
     await status(`Enviando ${lista.length} anúncios…`);
     const r = await api("/api/anuncios", {
@@ -355,12 +495,19 @@ async function pesquisar(p) {
       throw new Error(INTERROMPIDA);
     }
     await moerFila(r.pendentes);
+    // Segunda chance para o que o servidor não conseguiu ler. Na fila fica um
+    // lote curto por termo, para não segurar o próximo.
+    const lidasAqui = await lerPeloNavegador(p.emFila ? 9 : 30);
     // Na fila, copiar mídia à exaustão entre um termo e outro parece travamento:
     // lote curto agora, o resto no fim da fila.
     await moerMidias(r.midias_pendentes, p.emFila ? 12 : 60);
 
     await status(`Pronto: ${r.novos} novos de ${r.recebidos} com cara de low ticket`
-      + ` (${coletados - lista.length} sem link de venda descartados). ${r.usos_restantes} usos restantes.`, {
+      + ` (${coletados - comLink.length} sem link de venda`
+      + (fracos ? `, ${fracos} de anunciante com menos de ${minAds} anúncios` : "")
+      + ` descartados).`
+      + (lidasAqui ? ` ${lidasAqui} página(s) recuperada(s) pelo seu navegador.` : "")
+      + ` ${r.usos_restantes} usos restantes.`, {
       concluido: true, usos: r.usos_restantes,
     });
 
@@ -443,14 +590,14 @@ async function pesquisarFila(conf) {
   return { feitos, novos };
 }
 
-// ------------------------------------------------------------------ pesquisa automática
+// ------------------------------------------------------------------ captura passiva
 
-// Com o toggle ligado, qualquer visita manual à Biblioteca de Anúncios é
-// coletada em segundo plano — sem scroll agressivo, só o que carregar.
+// Abrir a Biblioteca nunca inicia coleta nem rolagem: isso só acontece por
+// comando no popup/painel.
 chrome.tabs.onUpdated.addListener(async (tabId, info, aba) => {
   if (info.status !== "complete") return;
   if (!aba.url || !aba.url.includes("/ads/library")) return;
-  const { auto, token, abrirSozinho, painelFlutuante, autoRolar } = await cfg();
+  const { abrirSozinho, painelFlutuante } = await cfg();
 
   // Abre o popup junto com a Biblioteca. Só funciona com a janela em foco e a
   // partir do Chrome 127 — quando não rola, a barra de cópia do overlay.js já
@@ -464,27 +611,16 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, aba) => {
       console.debug("openPopup recusado", e.message);
     }
   }
-
-  // O envio em si é contínuo (mensagem CAPTURADOS do content.js). Aqui só
-  // entra o "deixar rolar": a rolagem carrega mais anúncios e eles chegam pelo
-  // mesmo caminho.
-  if (!auto || !token || !autoRolar || rodando || filaEmCurso) return;
-  if ((aba.url || "").includes("mn-contagem")) return;
-  try {
-    await esperarPronto(tabId, 10);
-    await coletarNaAba(tabId, 60, 40000, 8, true);
-  } catch (e) {
-    console.warn("rolagem automática falhou", e);
-  }
 });
 
-// Pesquisa automática (passiva): o que a página carregou e ainda não foi mandado.
+// Captura passiva: o que a página carregou e ainda não foi mandado. Só envia
+// se você ligou o toggle no popup.
 let enviandoCapturados = Promise.resolve();
 async function receberCapturados(msg) {
-  const { auto, token } = await cfg();
+  const { capturaPassiva, token } = await cfg();
   // Pesquisa ativa já envia o que coleta: marca como enviado para não duplicar.
   if (rodando || filaEmCurso) return { marcar: true, ignorado: "pesquisa ativa" };
-  if (!auto || !token) return { marcar: false, ignorado: "pesquisa automática desligada" };
+  if (!capturaPassiva || !token) return { marcar: false, ignorado: "captura passiva desligada" };
   const lista = (msg.anuncios || []).filter(podeSerLow);
   if (!lista.length) return { marcar: true, enviados: 0 };
   let busca;
@@ -495,7 +631,7 @@ async function receberCapturados(msg) {
     pais: busca.get("country") || "BR",
     passivo: true,                         // não conta como pesquisa nem gasta uso
   });
-  await status(`Pesquisa automática: +${lista.length} anúncio(s) enviados ao minerador`
+  await status(`Captura passiva: +${lista.length} anúncio(s) enviados ao WaveMiner`
     + ` (${r.novos} novos).`);
   // a URL da mídia vence e o destino precisa ser analisado: um pouco agora
   if (r.pendentes) moerFila(r.pendentes, 3);
@@ -571,7 +707,7 @@ async function minerarAuto(conf) {
     const parou = pararFila || await pediramParar();
     await status(`🤖 ${parou ? "Mineração automática interrompida" : "Mineração automática terminada"}: `
       + `${buscas} busca(s), ${novos} anúncios novos`
-      + (ganhou != null ? `, +${Math.max(0, ganhou)} low ticket no minerador (total ${depois.low_ticket}).`
+      + (ganhou != null ? `, +${Math.max(0, ganhou)} low ticket no WaveMiner (total ${depois.low_ticket}).`
                         : "."), { concluido: true });
   } finally {
     filaEmCurso = false;

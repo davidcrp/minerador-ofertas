@@ -15,6 +15,7 @@ import secrets
 import time
 from datetime import datetime, timezone
 from functools import wraps
+from urllib.parse import urlsplit
 
 import psycopg
 from flask import (Flask, g, jsonify, redirect, render_template, request,
@@ -27,7 +28,8 @@ import ideias
 import lowticket
 from lowticket import COTACAO_BRL, LOW_TICKET_MAX, NAO_VENDE
 import midias
-from db import confere_senha, get_db, novo_token, user_por_token
+from db import (anotar_falha_login, atualizar_hash, confere_senha, get_db,
+                login_travado, novo_token, senha_antiga, user_por_token)
 from gateways import e_gateway, tipo_de
 
 # Destino que não é página de venda: perfil, conversa, loja de app. Serve ao
@@ -162,14 +164,36 @@ def dias_desde(epoch) -> int:
 
 # ---------------------------------------------------------------- auth
 
+TRAVADO = "Muitas tentativas erradas. Espere 15 minutos e tente de novo."
+
+
+def _entrar(usuario: str, senha: str):
+    """(linha do usuário | None, travado). Erro de senha é contado por
+    usuário+IP (8 em 15 min) e por IP (30): força bruta para, e ninguém
+    consegue trancar a conta de outra pessoa errando a senha dela de longe."""
+    usuario = (usuario or "").strip()
+    ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
+    chaves = {f"u:{usuario.lower()[:80]}|{ip}": 8, f"ip:{ip}": 30}
+    if login_travado(chaves):
+        return None, True
+    conn = get_db()
+    row = conn.execute("SELECT * FROM usuarios WHERE username = %s", (usuario,)).fetchone()
+    conn.close()
+    if not row or not confere_senha(senha, row["password_hash"]):
+        anotar_falha_login(list(chaves))
+        return None, False
+    if senha_antiga(row["password_hash"]):
+        atualizar_hash(row["id"], senha)     # hash fraco sai no primeiro login certo
+    return row, False
+
+
 @app.post("/api/login")
 def api_login():
     dados = request.get_json(silent=True) or {}
-    conn = get_db()
-    row = conn.execute("SELECT * FROM usuarios WHERE username = %s",
-                       (str(dados.get("username", "")).strip(),)).fetchone()
-    conn.close()
-    if not row or not confere_senha(str(dados.get("password", "")), row["password_hash"]):
+    row, travado = _entrar(str(dados.get("username", "")), str(dados.get("password", "")))
+    if travado:
+        return jsonify({"erro": TRAVADO}), 429
+    if not row:
         return jsonify({"erro": "usuario ou senha invalidos"}), 401
     return jsonify({
         "token": novo_token(row["id"]),
@@ -205,6 +229,12 @@ def api_anuncios():
     pais = str(dados.get("pais", "BR"))[:5]
     if not isinstance(ads, list):
         return jsonify({"erro": "anuncios deve ser lista"}), 400
+    # O contador chegava a zero e a ingestão seguia igual: o limite do plano
+    # não limitava nada. Sem usos, nada entra — nem envio passivo nem ★, que
+    # antes eram a porta dos fundos (não gastam uso, mas exigem ter algum).
+    if ads and g.user["plano"] != "admin" and (g.user["usos_restantes"] or 0) <= 0:
+        return jsonify({"erro": "Seus usos acabaram. Veja os planos no painel.",
+                        "sem_usos": True, "usos_restantes": 0}), 402
 
     linhas, urls, ids = [], set(), []
     descartados = 0
@@ -271,6 +301,22 @@ def api_anuncios():
         # destino já analisado e reprovado: sai agora, sem esperar o lote
         lowticket.podar(conn, list(urls))
 
+        # Foto do dia: quantos anúncios ativos cada anunciante desta leva tem.
+        # No mesmo dia fica o maior valor visto (uma busca rasa não rebaixa).
+        paginas = list({linha[2] for linha in linhas if linha[2]})
+        if paginas:
+            conn.execute("""
+                INSERT INTO historico (user_id, page_id, dia, ativos)
+                SELECT %s, page_id, CURRENT_DATE,
+                       SUM(CASE WHEN is_active = 1 THEN COALESCE(variacoes, 1) ELSE 0 END)
+                FROM anuncios
+                WHERE user_id = %s AND page_id = ANY(%s)
+                  AND atualizado_em > NOW() - INTERVAL '36 hours'
+                GROUP BY page_id
+                ON CONFLICT (user_id, page_id, dia) DO UPDATE
+                    SET ativos = GREATEST(historico.ativos, EXCLUDED.ativos)
+            """, (g.user["id"], g.user["id"], paginas))
+
         restantes = conn.execute("SELECT usos_restantes FROM usuarios WHERE id = %s",
                                  (g.user["id"],)).fetchone()["usos_restantes"]
     conn.close()
@@ -310,6 +356,14 @@ def api_anunciantes():
                     escaneado_em=NOW()
             """, [(str(i["page_id"]), (i.get("page_name") or "")[:250],
                    int(i.get("total_ativos") or 0)) for i in itens])
+            # contagem real também entra na foto do dia
+            conn.cursor().executemany("""
+                INSERT INTO historico (user_id, page_id, dia, ativos)
+                VALUES (%s, %s, CURRENT_DATE, %s)
+                ON CONFLICT (user_id, page_id, dia) DO UPDATE
+                    SET ativos = GREATEST(historico.ativos, EXCLUDED.ativos)
+            """, [(g.user["id"], str(i["page_id"]), int(i.get("total_ativos") or 0))
+                  for i in itens])
         conn.close()
     return jsonify({"ok": True, "atualizados": len(itens)})
 
@@ -376,8 +430,34 @@ def api_auto_termos():
 @app.get("/api/resumo")
 @precisa_token
 def api_resumo():
-    """Quantos anunciantes low ticket o minerador tem agora."""
-    return jsonify({"low_ticket": len(montar_ofertas(g.user["id"], {}))})
+    """Quantos anunciantes low ticket o minerador tem agora. Uma contagem no
+    banco: antes isto montava todas as ofertas (lia todos os anúncios) só para
+    devolver um número, duas vezes por mineração automática."""
+    conn = get_db()
+    n = conn.execute("""
+        SELECT COUNT(DISTINCT COALESCE(NULLIF(page_id, ''), NULLIF(page_name, ''),
+                                       ad_archive_id)) AS c
+        FROM anuncios WHERE user_id = %s AND excluido_em IS NULL
+    """, (g.user["id"],)).fetchone()["c"]
+    conn.close()
+    return jsonify({"low_ticket": n})
+
+
+@app.get("/api/destinos/navegador")
+@precisa_token
+def api_destinos_navegador():
+    """Destinos que o servidor não conseguiu ler (bloqueio, página camuflada):
+    a extensão baixa pelo navegador de quem usa e devolve o HTML no POST."""
+    limite = max(0, min(int(request.args.get("limite", 4) or 4), 8))
+    return jsonify(enrich.para_navegador(g.user["id"], limite))
+
+
+@app.post("/api/destinos/navegador")
+@precisa_token
+def api_destinos_navegador_receber():
+    dados = request.get_json(silent=True) or {}
+    itens = dados.get("itens") if isinstance(dados.get("itens"), list) else []
+    return jsonify(enrich.receber_do_navegador(g.user["id"], itens))
 
 
 @app.post("/api/ideias")
@@ -397,6 +477,70 @@ def api_midias():
 
 # ---------------------------------------------------------------- consulta
 
+# Hospedagem compartilhada: o domínio é da plataforma, quem identifica a oferta
+# é o subdomínio (já está no host) ou o caminho.
+HOST_COM_CAMINHO = {"sites.google.com", "canva.site", "my.canva.site", "linktr.ee"}
+
+
+def chave_oferta(checkout: str, final: str, dominio: str) -> str:
+    """O que identifica a OFERTA, não a página que anuncia. Operação que escala
+    low ticket roda a mesma oferta em várias páginas; vistas uma a uma, cada
+    página parece fraca. Ordem: checkout (o produto mora no caminho) -> destino
+    que já é checkout -> domínio da página de venda."""
+    def caminho(u: str) -> str:
+        try:
+            p = urlsplit(u)
+            return (p.hostname or "").lower().removeprefix("www.") + p.path.rstrip("/")
+        except ValueError:
+            return ""
+    if checkout:
+        return "c:" + caminho(checkout)
+    if final and e_gateway(final):
+        return "c:" + caminho(final)
+    if not dominio or dominio in NAO_VENDE:
+        return ""
+    if dominio in HOST_COM_CAMINHO:
+        return "d:" + caminho(final)
+    return "d:" + dominio
+
+
+def pontuar(o: dict) -> dict:
+    """Sinais e score de uma oferta.
+
+    Base: anúncios ativos × tempo rodando — escala ponderada por durabilidade.
+    A escala é a da REDE quando a mesma oferta roda em várias páginas. O tempo
+    conta até 180 dias: depois disso a oferta já provou que dura, e sem teto um
+    anúncio esquecido há 3 anos passava na frente de quem escala agora.
+
+    - escalando (×1,3): 30+ dias no ar e criativo novo nos últimos 14 — ninguém
+      paga criativo novo para oferta que não vende;
+    - validada (×1,2): preço low ticket + checkout/plataforma de venda;
+    - crescendo (×1,2): 50% mais anúncios ativos do que na foto antiga;
+    - sumida: não aparece numa coleta há mais de 14 dias — o score cai até 30%
+      do valor em ~2 meses, porque "ativo" ali é só a última vez que foi visto.
+    """
+    escalando = (o["dias_rodando"] >= 30 and o["dias_novo"] <= 14
+                 and o["anuncios_coletados"] >= 2)
+    validada = (0 < o["preco_brl"] <= LOW_TICKET_MAX
+                and bool(o["checkout_url"]
+                         or o["tipo_gateway"] in ("infoproduto", "ecommerce")))
+    antes, agora = o.get("ativos_antes") or 0, o["anuncios_ativos"]
+    crescendo = antes > 0 and agora >= antes * 1.5 and agora - antes >= 3
+    escala = max(agora, o.get("rede_ativos") or 0)
+    score = escala * (1 + min(o["dias_rodando"], 180) / 30)
+    if escalando:
+        score *= 1.3
+    if validada:
+        score *= 1.2
+    if crescendo:
+        score *= 1.2
+    sumida = (o.get("visto_ha") or 0) > 14
+    if sumida:
+        score *= max(0.3, 1 - (o["visto_ha"] - 14) / 60)
+    return {"escalando": escalando, "validada": validada, "crescendo": crescendo,
+            "sumida": sumida, "score": round(score, 1)}
+
+
 def montar_ofertas(user_id: int, filtros, com_total: bool = False):
     conn = get_db()
     # Colunas na mão, não `a.*`: o painel recarrega sozinho e cada leitura
@@ -404,9 +548,9 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
     # usa. Isso é tráfego do banco, e tráfego é cota.
     linhas = conn.execute("""
         SELECT a.ad_archive_id, a.page_id, a.page_name, a.is_active, a.start_date,
-               a.dias_ativo, a.plataformas, a.cta_text, a.link_url, a.midia,
+               a.end_date, a.dias_ativo, a.plataformas, a.cta_text, a.link_url, a.midia,
                a.midia_url, a.midia_poster, a.variacoes, a.termo, a.pais,
-               LEFT(a.texto, 400) AS texto,
+               EXTRACT(EPOCH FROM a.atualizado_em)::bigint AS visto_em,
                d.url_final, d.dominio, d.gateway,
                d.checkout_url, d.preco, d.preco_valor, d.preco_moeda,
                d.imagem, d.status AS destino_status,
@@ -418,7 +562,25 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
         LEFT JOIN anunciantes an ON an.page_id = a.page_id
         WHERE a.user_id = %s AND a.excluido_em IS NULL
     """, (user_id,)).fetchall()
+    # A copy vinha em TODA linha (400 caracteres por anúncio) para no fim
+    # sobrar uma por anunciante. Agora o banco já devolve só a maior de cada um.
+    copies = {r["page_id"]: r["texto"] for r in conn.execute("""
+        SELECT DISTINCT ON (page_id) page_id, LEFT(texto, 400) AS texto
+        FROM anuncios
+        WHERE user_id = %s AND excluido_em IS NULL AND COALESCE(texto, '') <> ''
+          AND texto NOT LIKE '%%{{%%'
+        ORDER BY page_id, LENGTH(texto) DESC
+    """, (user_id,)).fetchall()}
+    # Foto mais antiga de cada anunciante nos últimos 30 dias (com 3+ dias de
+    # idade): é contra ela que se mede crescimento.
+    antigos = {r["page_id"]: r for r in conn.execute("""
+        SELECT DISTINCT ON (page_id) page_id, ativos, (CURRENT_DATE - dia) AS ha
+        FROM historico
+        WHERE user_id = %s AND dia >= CURRENT_DATE - 30 AND dia <= CURRENT_DATE - 3
+        ORDER BY page_id, dia
+    """, (user_id,)).fetchall()}
     conn.close()
+    agora = time.time()
 
     grupos: dict[str, dict] = {}
     for r in linhas:
@@ -433,15 +595,44 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
             "checkout_url": "", "melhor_texto": "", "cta": set(),
             "imagem": "", "imagem_anuncio": "", "video": "", "poster": "",
             "pendente_enriquecimento": False,
+            "visto_em": 0, "chaves": {}, "lidos": 0, "bloqueados": 0,
         })
+        # `dias_ativo` é gravado na coleta e ficava congelado: anúncio coletado
+        # há um mês mostrava a idade de um mês atrás. A idade sai da data de
+        # início. Para "rodando há", o relógio para na última vez em que o
+        # anúncio foi VISTO (ou no fim declarado): depois disso ninguém sabe se
+        # ele continua no ar.
+        visto = r["visto_em"] or agora
+        item["visto_em"] = max(item["visto_em"], visto)
+        if r["start_date"]:
+            if not r["is_active"] and r["end_date"]:
+                fim = r["end_date"]
+            else:
+                # visto há pouco conta até hoje; sumido há 2+ semanas, até a
+                # última vez em que apareceu
+                fim = agora if agora - visto < 14 * 86400 else visto
+            dias = max(0, int((fim - r["start_date"]) // 86400))
+            idade = max(0, int((agora - r["start_date"]) // 86400))
+        else:
+            dias = idade = r["dias_ativo"] or 0
+        ch = chave_oferta(r["checkout_url"] or "", r["url_final"] or "", r["dominio"] or "")
+        if ch:
+            item["chaves"][ch] = item["chaves"].get(ch, 0) + 1
+        if r["destino_status"] == "bloqueado":
+            item["bloqueados"] += 1
+        elif r["destino_status"] == "ok":
+            item["lidos"] += 1
         item["anuncios_coletados"] += 1
         item["variacoes"] += r["variacoes"] or 1
         item["ativos"] += 1 if r["is_active"] else 0
-        item["dias_rodando"] = max(item["dias_rodando"], r["dias_ativo"] or 0)
+        # Um cartão da Biblioteca pode representar vários anúncios ("12 anúncios
+        # usam esse criativo"): quem roda 1 criativo em 12 anúncios está
+        # escalando, e contava como 1.
+        item["ativos_com_variacoes"] = item.get("ativos_com_variacoes", 0) + (
+            (r["variacoes"] or 1) if r["is_active"] else 0)
+        item["dias_rodando"] = max(item["dias_rodando"], dias)
         # o mais novo diz se o anunciante ainda está subindo criativo
-        if r["dias_ativo"] is not None:
-            item["dias_novo"] = (r["dias_ativo"] if item["dias_novo"] is None
-                                 else min(item["dias_novo"], r["dias_ativo"]))
+        item["dias_novo"] = idade if item["dias_novo"] is None else min(item["dias_novo"], idade)
         if r["start_date"] and (item["primeiro_anuncio"] is None
                                 or r["start_date"] < item["primeiro_anuncio"]):
             item["primeiro_anuncio"] = r["start_date"]
@@ -484,16 +675,16 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
         if r["link_url"] and r["destino_status"] in (None, "pendente", "processando"):
             item["pendente_enriquecimento"] = True
         # Anúncio de catálogo traz o molde cru ("{{product.brand}}") no lugar
-        # da copy: não serve para ler a oferta, fica com o de outro anúncio.
-        texto = r["texto"] or ""
-        if "{{" not in texto and len(texto) > len(item["melhor_texto"]):
-            item["melhor_texto"] = texto
+        # da copy: a consulta de `copies` já deixa esses de fora.
+        item["melhor_texto"] = copies.get(r["page_id"]) or ""
 
     maior = lambda d: (max(d.items(), key=lambda x: x[1])[0] if d else "")  # noqa: E731
 
     saida = []
     for it in grupos.values():
-        total_ativos = it["total_ativos_real"] or it["ativos"] or it["anuncios_coletados"]
+        total_ativos = (it["total_ativos_real"] or it.get("ativos_com_variacoes")
+                        or it["ativos"] or it["anuncios_coletados"])
+        pais_principal = (sorted(it["paises"]) or ["BR"])[0]
         # menor preço = oferta de entrada, que é o que interessa em low ticket
         barato = min((p for p in it["precos"] if p[0] > 0), default=None)
         o = {
@@ -504,7 +695,8 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
             "anuncios_coletados": it["anuncios_coletados"],
             "variacoes": it["variacoes"],
             "dias_rodando": it["dias_rodando"],
-            "dias_novo": it["dias_novo"] if it["dias_novo"] is not None else 0,
+            "dias_novo": min(it["dias_novo"] if it["dias_novo"] is not None else 0,
+                             it["dias_rodando"]),
             "primeiro_anuncio": (
                 datetime.fromtimestamp(it["primeiro_anuncio"], tz=timezone.utc)
                 .strftime("%Y-%m-%d") if it["primeiro_anuncio"] else ""),
@@ -545,12 +737,29 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
             "pendente": it["pendente_enriquecimento"],
             "url_biblioteca": (
                 "https://www.facebook.com/ads/library/?active_status=active"
-                f"&ad_type=all&country=BR&view_all_page_id={it['page_id']}"
+                f"&ad_type=all&country={pais_principal}&view_all_page_id={it['page_id']}"
                 "&search_type=page&media_type=all" if it["page_id"] else ""),
         }
-        # Escala = anúncios ativos ponderados pelo tempo que a oferta aguenta rodar.
-        o["score"] = round(o["anuncios_ativos"] * (1 + o["dias_rodando"] / 30), 1)
+        o["chave_oferta"] = maior(it["chaves"])
+        # o servidor não conseguiu ler nenhum destino deste anunciante
+        o["bloqueado"] = bool(it["bloqueados"]) and not it["lidos"]
+        o["visto_ha"] = max(0, int((agora - (it["visto_em"] or agora)) // 86400))
+        antigo = antigos.get(it["page_id"])
+        o["ativos_antes"] = antigo["ativos"] if antigo else 0
+        o["ativos_antes_ha"] = antigo["ha"] if antigo else 0
         saida.append(o)
+
+    # Mesma oferta em várias páginas: cada uma ganha o tamanho da rede.
+    redes: dict[str, list] = {}
+    for o in saida:
+        if o["chave_oferta"]:
+            redes.setdefault(o["chave_oferta"], []).append(o)
+    for o in saida:
+        rede = redes.get(o["chave_oferta"]) or [o]
+        o["rede_paginas"] = len(rede)
+        o["rede_ativos"] = sum(x["anuncios_ativos"] for x in rede)
+        o["rede_nomes"] = [x["page_name"] for x in rede if x is not o][:6]
+        o.update(pontuar(o))
 
     min_ads = int(filtros.get("min_anuncios") or 0)
     min_dias = int(filtros.get("min_dias") or 0)
@@ -565,6 +774,7 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
     # Low ticket = preço detectado até R$ 50 (ou o "até" da tela), com página
     # de checkout e destino que vende — perfil, app e WhatsApp ficam de fora.
     low = filtros.get("low") in ("1", "true", "on")
+    agrupar = filtros.get("agrupar") in ("1", "true", "on")
 
     def numero(chave):
         try:
@@ -578,7 +788,8 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
         preco_max = preco_max or LOW_TICKET_MAX
 
     def passa(i: dict) -> bool:
-        if i["anuncios_ativos"] < min_ads or i["dias_rodando"] < min_dias:
+        # o mínimo vale para a oferta: 10 páginas com 1 anúncio cada é escala
+        if max(i["anuncios_ativos"], i["rede_ativos"]) < min_ads or i["dias_rodando"] < min_dias:
             return False
         if gateway and gateway not in (i["gateway"] or "").lower():
             return False
@@ -613,6 +824,15 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
     total = len(saida)
     saida = [i for i in saida if passa(i)]
     saida.sort(key=lambda i: (-i["score"], -i["anuncios_ativos"]))
+    if agrupar:
+        # uma linha por oferta: fica a página mais forte, com "+N páginas"
+        vistas, unicas = set(), []
+        for i in saida:
+            if i["chave_oferta"] and i["chave_oferta"] in vistas:
+                continue
+            vistas.add(i["chave_oferta"])
+            unicas.append(i)
+        saida = unicas
     # o total sem filtro é o que deixa o painel avisar "22 de 56": filtro que
     # esconde em silêncio parece dado faltando
     return (saida, total) if com_total else saida
@@ -651,11 +871,10 @@ def login_page():
 
 @app.post("/login")
 def login_post():
-    conn = get_db()
-    row = conn.execute("SELECT * FROM usuarios WHERE username = %s",
-                       (request.form.get("username", "").strip(),)).fetchone()
-    conn.close()
-    if not row or not confere_senha(request.form.get("password", ""), row["password_hash"]):
+    row, travado = _entrar(request.form.get("username", ""), request.form.get("password", ""))
+    if travado:
+        return redirect(url_for("login_page", erro=TRAVADO))
+    if not row:
         return redirect(url_for("login_page", erro="Usuário ou senha inválidos"))
     session["uid"] = row["id"]
     session.permanent = True
@@ -870,7 +1089,7 @@ def dados_excluir():
     conn = get_db()
     with conn:
         n = conn.execute(
-            "UPDATE anuncios SET excluido_em = NOW()"
+            "UPDATE anuncios SET excluido_em = NOW(), excluido_motivo = 'manual'"
             " WHERE user_id = %s AND page_id = ANY(%s) AND excluido_em IS NULL",
             (g.user["id"], ids)).rowcount
     conn.close()
@@ -884,7 +1103,7 @@ def dados_restaurar():
     ids = _page_ids(request.get_json(silent=True) or {})
     conn = get_db()
     with conn:
-        n = conn.execute("UPDATE anuncios SET excluido_em = NULL"
+        n = conn.execute("UPDATE anuncios SET excluido_em = NULL, excluido_motivo = NULL"
                          " WHERE user_id = %s AND page_id = ANY(%s)",
                          (g.user["id"], ids)).rowcount
     conn.close()
@@ -899,7 +1118,7 @@ def dados_limpar():
     conn = get_db()
     with conn:
         anuncios = conn.execute(
-            "UPDATE anuncios SET excluido_em = NOW()"
+            "UPDATE anuncios SET excluido_em = NOW(), excluido_motivo = 'manual'"
             " WHERE user_id = %s AND excluido_em IS NULL",
             (g.user["id"],)).rowcount
     conn.close()

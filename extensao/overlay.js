@@ -192,8 +192,14 @@ function cartaoDe(no) {
 
 function textosComId() {
   const achados = [];
+  // Cartão já marcado fica de fora: sem isso cada mutação da página refazia o
+  // trabalho (e o `innerText` de `cartaoDe`, que força layout) para TODOS os
+  // anúncios já carregados — com centenas de cartões a Biblioteca engasgava
+  // justamente durante a coleta.
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => (RE_ID.test(n.data) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+    acceptNode: (n) => (RE_ID.test(n.data) && n.parentElement
+      && !n.parentElement.closest("[data-mn-id]")
+      ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
   });
   for (let n = w.nextNode(); n; n = w.nextNode()) achados.push(n);
   return achados;
@@ -205,7 +211,7 @@ function montarBarra(id, cartao) {
   barra.innerHTML = `
     <button class="mn-btn" data-mn="baixar" title="Abrir a mídia em outra aba">${ICONES.baixar}</button>
     <button class="mn-btn mn-verde" data-mn="copiar">${ICONES.copiar}COPIAR</button>
-    <button class="mn-btn" data-mn="salvar" title="Salvar este anúncio no minerador">${ICONES.salvar}</button>
+    <button class="mn-btn" data-mn="salvar" title="Salvar este anúncio no WaveMiner">${ICONES.salvar}</button>
     <button class="mn-btn" data-mn="painel" title="Abrir o painel">${ICONES.painel}</button>
     <span class="mn-tempo" hidden></span>
     <div class="mn-menu"></div>`;

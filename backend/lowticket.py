@@ -12,12 +12,20 @@ corte acontece em dois momentos:
 
 from __future__ import annotations
 
+import os
+
 from gateways import IGNORAR, host, tipo_de
 
 # Low ticket se mede em real: US$ 49 não é oferta de entrada no Brasil.
 # Cotação fixa e redonda de propósito — o corte é grosso, não contábil.
-COTACAO_BRL = {"": 1.0, "BRL": 1.0, "USD": 5.5, "EUR": 6.0}
-LOW_TICKET_MAX = 50.0
+# As moedas hispânicas precisam estar aqui: moeda fora da tabela vale 0, e com
+# isso TODA oferta do México, Argentina, Colômbia, Chile, Peru e Uruguai era
+# reprovada ("preço 0") e sumia do minerador.
+COTACAO_BRL = {"": 1.0, "BRL": 1.0, "USD": 5.5, "EUR": 6.0,
+               "MXN": 0.30, "ARS": 0.004, "COP": 0.0014, "CLP": 0.006,
+               "PEN": 1.5, "UYU": 0.14}
+# MINERADOR_LOW_MAX muda o teto sem mexer no código (ex.: 97).
+LOW_TICKET_MAX = float(os.getenv("MINERADOR_LOW_MAX", "50") or 50)
 
 # Destino que não é página de venda: perfil, conversa, loja de app.
 NAO_VENDE = IGNORAR | {"apps.apple.com", "play.google.com", "fb.me", "linktr.ee",
@@ -62,27 +70,37 @@ def podar(conn, urls=None) -> int:
             return 0
         filtro, args = " AND url = ANY(%s)", [MAX_TENTATIVAS, urls]
     # Decidido = analisado com sucesso, ou esgotou as tentativas (site fora do
-    # ar não dá para provar preço nem checkout).
+    # ar não dá para provar preço nem checkout). 'bloqueado' (403, desafio
+    # anti-robô) NÃO é decidido: o site existe, só não deixou o servidor ler —
+    # esconder isso jogava fora justamente quem se protege de espião.
     linhas = conn.execute(f"""
         SELECT url, url_final, preco_valor, preco_moeda, checkout_url, gateway
         FROM destinos
         WHERE (status = 'ok' OR (status = 'erro' AND tentativas >= %s)){filtro}
     """, args).fetchall()
     reprovados = [r["url"] for r in linhas if not destino_e_low(dict(r))]
+    aprovados = [r["url"] for r in linhas if destino_e_low(dict(r))]
 
     n = 0
     if reprovados:
         n += conn.execute("""
-            UPDATE anuncios SET excluido_em = NOW()
+            UPDATE anuncios SET excluido_em = NOW(), excluido_motivo = 'poda'
             WHERE excluido_em IS NULL AND link_url = ANY(%s)
         """, (reprovados,)).rowcount
+    # Destino que passou numa leitura melhor (navegador, checkout, copy) traz
+    # de volta o que a poda tinha escondido. O ✕ manual não volta sozinho.
+    if aprovados:
+        conn.execute("""
+            UPDATE anuncios SET excluido_em = NULL, excluido_motivo = NULL
+            WHERE excluido_motivo = 'poda' AND link_url = ANY(%s)
+        """, (aprovados,))
     if urls is None:
         # sobra de antes da regra: anúncio sem link ou com link de app/perfil
         for r in conn.execute("SELECT DISTINCT link_url FROM anuncios WHERE excluido_em IS NULL"
                               ).fetchall():
             if not link_pode_ser_low(r["link_url"]):
                 n += conn.execute("""
-                    UPDATE anuncios SET excluido_em = NOW()
+                    UPDATE anuncios SET excluido_em = NOW(), excluido_motivo = 'poda'
                     WHERE excluido_em IS NULL AND link_url IS NOT DISTINCT FROM %s
                 """, (r["link_url"],)).rowcount
     return n

@@ -9,8 +9,8 @@
   flex-direction: column;
   min-width: 250px;
   min-height: 120px;
-  background: #2b3a4a;
-  border: 1px solid #1c2733;
+  background: #05070a;
+  border: 1px solid #1e2936;
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
   overflow: hidden;
@@ -28,7 +28,7 @@
   align-items: center;
   gap: 6px;
   padding: 7px 8px;
-  background: #22303e;
+  background: #0b1017;
   cursor: grab;
   user-select: none;
   flex: 0 0 auto;
@@ -36,7 +36,7 @@
 
 .mnp-cabeca.mnp-arrastando { cursor: grabbing; }
 .mnp-titulo { flex: 1; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
-.mnp-titulo b { color: #22c55e; }
+.mnp-titulo b { color: #2f8bff; }
 
 .mnp-cabeca button {
   width: 22px;
@@ -52,7 +52,7 @@
 
 .mnp-cabeca button:hover { background: rgba(255, 255, 255, .28); }
 
-.mnp-corpo { flex: 1 1 auto; min-height: 0; background: #fff; }
+.mnp-corpo { flex: 1 1 auto; min-height: 0; background: #05070a; }
 .mnp-corpo iframe { width: 100%; height: 100%; border: 0; display: block; }
 
 .mnp-painel.mnp-recolhido { height: auto !important; min-height: 0; }
@@ -68,9 +68,9 @@
   width: 16px;
   height: 16px;
   cursor: nwse-resize;
-  background: linear-gradient(135deg, transparent 45%, #22c55e 45%, #22c55e 62%,
-                              transparent 62%, transparent 72%, #22c55e 72%,
-                              #22c55e 88%, transparent 88%);
+  background: linear-gradient(135deg, transparent 45%, #2f8bff 45%, #2f8bff 62%,
+                              transparent 62%, transparent 72%, #2f8bff 72%,
+                              #2f8bff 88%, transparent 88%);
 }
 
 /* Enquanto arrasta/redimensiona o iframe não pode roubar o ponteiro. */
@@ -87,20 +87,20 @@
   padding: 9px 13px;
   border: 0;
   border-radius: 999px;
-  background: #22c55e;
-  color: #06210f;
+  background: #2f8bff;
+  color: #03142b;
   font: 700 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
   cursor: pointer;
   box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
 }
 
-.mnp-fab:hover { background: #16a34a; }
+.mnp-fab:hover { background: #1f73e0; }
 
 /* Plano B: se o Facebook barrar o iframe da extensão por CSP. */
 .mnp-aviso {
   padding: 14px;
-  background: #fff;
-  color: #1f2a37;
+  background: #05070a;
+  color: #e8eef5;
   font: 12px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -110,8 +110,8 @@
   padding: 9px;
   border: 0;
   border-radius: 8px;
-  background: #2b3a4a;
-  color: #fff;
+  background: #2f8bff;
+  color: #03142b;
   font-weight: 700;
   cursor: pointer;
 }
@@ -124,7 +124,7 @@
   right: 0;
   z-index: 2147483647;
   padding: 8px 14px;
-  background: #22303e;
+  background: #0b1017;
   color: #fff;
   font: 700 12px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
   text-align: center;

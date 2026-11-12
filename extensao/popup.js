@@ -25,6 +25,9 @@ if (typeof chrome === "undefined" || !chrome.storage) {
   };
 }
 
+const escHtml = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
 const SUGESTOES_PT = [
   "receitas fit", "planilha financeira", "ebook", "curso online", "método",
   "artesanato", "crochê", "adestramento", "manual", "combo digital",
@@ -50,10 +53,11 @@ function sugestoes(s) {
 
 async function ler() {
   return chrome.storage.local.get([
-    "token", "apiUrl", "usuario", "usos", "auto",
+    "token", "apiUrl", "usuario", "usos", "capturaPassiva",
     "minAds", "minDias", "pais", "idioma", "profunda", "maxAnunciantes",
-    "maxAnuncios", "timeout", "termo", "abrirSozinho", "painelFlutuante", "usarAbaAtual", "abrirDashboard", "fila", "paradas", "autoRolar",
+    "maxAnuncios", "timeout", "termo", "abrirSozinho", "painelFlutuante", "usarAbaAtual", "abrirDashboard", "fila", "paradas", "visaoAtiva",
     "ideia", "ideiasTermos", "ideiasFonte", "ideiasGrupos", "ideiasInterp",
+    "lerNoNavegador",
   ]);
 }
 
@@ -72,8 +76,7 @@ async function mostrar() {
 
   $("#usos").textContent = s.usos ?? "—";
   $("#termo").value = s.termo || "";
-  $("#auto").checked = !!s.auto;
-  $("#auto-rolar").checked = !!s.autoRolar;
+  $("#auto").checked = !!s.capturaPassiva;
   $("#pais").value = s.pais || "BR";
   $("#idioma").value = s.idioma || "";
   pintarChips(s);
@@ -83,8 +86,10 @@ async function mostrar() {
   $("#profunda").checked = !!s.profunda;   // desligada por padrão: abre aba extra
   $("#abrir-sozinho").checked = s.abrirSozinho !== false;
   $("#painel-flutuante").checked = s.painelFlutuante !== false;
+  $("#visao-grade").checked = s.visaoAtiva !== false;
   $("#usar-aba").checked = !!s.usarAbaAtual;
   $("#abrir-painel").checked = !!s.abrirDashboard;
+  $("#ler-navegador").checked = !!s.lerNoNavegador;
   $("#max-anunciantes").value = s.maxAnunciantes ?? 8;
   // Só low ticket entra: a maior parte da busca é descartada, então 60 era
   // pouco (o anúncio bom estava na posição 74). 60 guardado = padrão antigo.
@@ -182,7 +187,7 @@ for (const [botao, painel] of [
 }
 
 function pintarChips(s) {
-  $("#chips").innerHTML = sugestoes(s).map((t) => `<button>${t}</button>`).join("");
+  $("#chips").innerHTML = sugestoes(s).map((t) => `<button>${escHtml(t)}</button>`).join("");
 }
 
 $("#chips").onclick = (e) => {
@@ -195,8 +200,7 @@ $("#termo").oninput = (e) => {
   chrome.storage.local.set({ termo: e.target.value });
   atualizarBotao();
 };
-$("#auto").onchange = (e) => chrome.storage.local.set({ auto: e.target.checked });
-$("#auto-rolar").onchange = (e) => chrome.storage.local.set({ autoRolar: e.target.checked });
+$("#auto").onchange = (e) => chrome.storage.local.set({ capturaPassiva: e.target.checked });
 $("#pais").onchange = async (e) => {
   await chrome.storage.local.set({ pais: e.target.value });
   pintarChips(await ler());
@@ -206,9 +210,25 @@ $("#idioma").onchange = async (e) => {
   pintarChips(await ler());
 };
 $("#profunda").onchange = (e) => chrome.storage.local.set({ profunda: e.target.checked });
-$("#usar-aba").onchange = (e) => chrome.storage.local.set({ usarAbaAtual: e.target.checked });
+$("#visao-grade").onchange = (e) => chrome.storage.local.set({ visaoAtiva: e.target.checked });
+$("#usar-aba").onchange =(e) => chrome.storage.local.set({ usarAbaAtual: e.target.checked });
 $("#abrir-painel").onchange = (e) => chrome.storage.local.set({ abrirDashboard: e.target.checked });
 $("#abrir-sozinho").onchange = (e) => chrome.storage.local.set({ abrirSozinho: e.target.checked });
+// Ler qualquer site é permissão opcional: o Chrome só deixa pedir dentro de um
+// clique do usuário, por isso o pedido mora aqui e não no background.
+$("#ler-navegador").onchange = async (e) => {
+  let ligar = e.target.checked;
+  if (ligar) {
+    try {
+      ligar = await chrome.permissions.request({ origins: ["*://*/*"] });
+    } catch (erro) {
+      ligar = false;
+    }
+    if (!ligar) estado("Sem a permissão, as páginas continuam sendo lidas só pelo servidor.", true);
+  }
+  e.target.checked = ligar;
+  chrome.storage.local.set({ lerNoNavegador: ligar });
+};
 $("#painel-flutuante").onchange = (e) =>
   chrome.storage.local.set({ painelFlutuante: e.target.checked });
 $("#max-anunciantes").oninput = (e) => chrome.storage.local.set({ maxAnunciantes: Number(e.target.value) });
@@ -240,7 +260,7 @@ function pintarFila(fila) {
   $("#fila-caixa").hidden = fila.length === 0;
   $("#fila-n").textContent = fila.length;
   $("#fila-chips").innerHTML = fila.map((t, i) =>
-    `<button data-i="${i}" title="Tirar da fila">${t}</button>`).join("");
+    `<button data-i="${i}" title="Tirar da fila">${escHtml(t)}</button>`).join("");
   atualizarBotao(fila);
 }
 
@@ -290,7 +310,6 @@ $("#btn-parar").onclick = () => {
 
 // A ideia ("produtos para o natal") vira termos que o anunciante escreve na
 // copy; você desmarca o que não quer e manda o resto para a fila.
-const escHtml = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const chip = (t) => `<button class="on" title="Clique para marcar/desmarcar">${escHtml(t)}</button>`;
 
 // Agrupado por tema ("Dia das Crianças", "Halloween"…): clicar no nome do tema
