@@ -207,6 +207,19 @@ Sem freio, uma pesquisa disparada minutos antes continuava rolando a página
 abrir na Biblioteca* (desligado por padrão) envia os anúncios que a página
 carregar, **sem rolar a página**; a rolagem existe só na pesquisa manual.
 
+## Uma busca só: `busca.js`
+
+Popup, grade e minerador montam a URL da Biblioteca pelo mesmo arquivo
+(`wmUrlBusca`): país, idioma, corte de dias (`start_date[max]`), frase exata e
+ordem por impressões. O botão **Buscar** da grade usa o idioma e o corte salvos
+no popup e grava país e termo de volta, e a guia da busca mostra o corte
+(`7+ dias`). Assim **Minerar esta busca** coleta exatamente o que está na tela,
+sem navegar para outra busca. As sugestões de partida (`WM_SUGESTOES`) também
+são uma lista só, em português ou espanhol conforme país/idioma.
+
+O arquivo é carregado como content script, no popup (`<script>`) e no service
+worker (`importScripts`); `checar.js` confere colisão de nomes nos três.
+
 ## Visão em grade
 
 `visao.js` desenha, em Shadow DOM por cima da Biblioteca, os anúncios que

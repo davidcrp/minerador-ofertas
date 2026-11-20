@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 
 const AQUI = __dirname;
-const CONTENT = ["content.js", "overlay.js", "visao.js", "painel.js"];
+const CONTENT = ["busca.js", "content.js", "overlay.js", "visao.js", "painel.js"];
 const TODOS = ["background.js", "popup.js", "hook.js", ...CONTENT];
 const RE_TOPO = /^(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/gm;
 
@@ -31,6 +31,18 @@ for (const arquivo of CONTENT) {
     const lista = donos.get(m[1]) || [];
     if (!lista.includes(arquivo)) lista.push(arquivo);
     donos.set(m[1], lista);
+  }
+}
+
+// busca.js também é carregado no background (importScripts) e no popup
+// (<script>): o mesmo nome de topo lá derruba o arquivo do mesmo jeito.
+for (const outro of ["background.js", "popup.js"]) {
+  const src = fs.readFileSync(path.join(AQUI, outro), "utf8");
+  for (const m of src.matchAll(RE_TOPO)) {
+    if ((donos.get(m[1]) || []).includes("busca.js")) {
+      console.log(`COLISÃO  "${m[1]}" declarado em busca.js e ${outro}`);
+      problemas++;
+    }
   }
 }
 

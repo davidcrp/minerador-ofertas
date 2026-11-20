@@ -233,17 +233,6 @@
     ["apps", "Apps", "M7 3h10v18H7zM11 18h2"],
     ["semsite", "Sem site", "M9 15l6-6M10 6l1-1a4 4 0 0 1 6 6l-1 1M14 18l-1 1a4 4 0 0 1-6-6l1-1M4 4l16 16"],
   ];
-  // Termos de partida da tela inicial, voltados a oferta de entrada.
-  const CATEGORIAS = [
-    ["Renda extra", ["renda extra em casa", "trabalhe de casa", "ganhar dinheiro online", "vendas pelo celular", "afiliado iniciante"]],
-    ["Emagrecimento", ["secar barriga", "cardápio para emagrecer", "chá emagrecedor", "treino em casa", "receitas low carb"]],
-    ["Receitas e confeitaria", ["apostila de receitas", "bolo no pote", "doces para vender", "marmitas fit", "pão caseiro"]],
-    ["Artesanato", ["moldes de crochê", "curso de amigurumi", "costura para iniciantes", "laços de cabelo", "velas artesanais"]],
-    ["Educação infantil", ["atividades para imprimir", "alfabetização em casa", "kit pedagógico", "caderno de caligrafia", "jogos educativos"]],
-    ["Idiomas e concursos", ["inglês do zero", "espanhol para iniciantes", "apostila concurso", "mapas mentais", "resumos para prova"]],
-    ["Fé e espiritualidade", ["devocional diário", "estudo bíblico", "oração poderosa", "planner cristão", "salmos para imprimir"]],
-    ["Relacionamento", ["reconquistar o amor", "salvar o casamento", "autoestima feminina", "ansiedade e sono", "inteligência emocional"]],
-  ];
   const ORDENS = [
     ["variacoes", "Mais anúncios no criativo"], ["dias", "Mais dias no ar"],
     ["preco", "Menor preço na copy"],
@@ -279,6 +268,8 @@
   const termoUrl = params.get("q") || "";
   const paisUrl = params.get("country") || "";
   const emBusca = !!(termoUrl || params.get("view_all_page_id"));
+  const corteUrl = wmLerBusca(location.href);
+  let idiomaSalvo = "", paisSalvo = "";
 
   const filtros = { texto: "", minDias: 0, maxDias: null, minVar: 1, tipo: "todos",
                     ordem: "variacoes", ocultos: [], anunciante: "", unicos: true, soLow: false };
@@ -318,7 +309,7 @@
         <header class="topo">
           <span class="marca">${onda(26)}<span>Wave<b>Miner</b></span></span>
           <form class="busca">
-            <select class="campo" id="pais" aria-label="País">${opcoes(PAISES, paisUrl || "BR")}</select>
+            <select class="campo" id="pais" aria-label="País">${opcoes(PAISES, paisUrl || paisSalvo || "BR")}</select>
             <input class="campo" id="termo" type="search" aria-label="Termo de busca"
                    placeholder='nicho, produto ou "frase exata"' value="${esc(termoUrl)}">
             <button class="btn" type="submit">Buscar</button>
@@ -327,7 +318,7 @@
           <button class="btn" id="fechar" title="Volta para a tela original da Biblioteca">Ver Biblioteca</button>
           <div class="estado" id="estado" role="status" hidden></div>
           <nav class="guias" id="guias" aria-label="Busca atual" hidden>
-            <div class="guia"><span class="num">${esc(paisUrl || "BR")}</span><span>${esc(termoUrl || "Anunciante")}</span><span class="num" id="guia-n"></span></div>
+            <div class="guia"><span class="num">${esc(paisUrl || "BR")}</span><span>${esc(termoUrl || "Anunciante")}</span>${corteUrl.minDias ? `<span class="num" title="A busca já vem cortada: só anúncios com ${corteUrl.minDias}+ dias no ar (Corte da coleta, no popup)">${corteUrl.minDias}+ dias</span>` : ""}${corteUrl.idioma ? `<span class="num" title="Idioma do anúncio">${esc(corteUrl.idioma)}</span>` : ""}<span class="num" id="guia-n"></span></div>
             <button class="ico" id="nova" title="Nova busca em outra aba" aria-label="Nova busca em outra aba">+</button>
           </nav>
         </header>
@@ -388,7 +379,7 @@
     raiz.querySelector(".busca").addEventListener("submit", (e) => {
       e.preventDefault();
       const termo = $("termo").value.trim();
-      if (termo) location.href = urlBusca(termo, $("pais").value);
+      if (termo) irPara(termo, $("pais").value);
     });
     $("fechar").onclick = () => chrome.storage.local.set({ visaoAtiva: false });
     $("minerar").onclick = minerar;
@@ -396,7 +387,7 @@
     $("nova").onclick = () => window.open("https://www.facebook.com/ads/library/", "_blank", "noopener");
     $("vazio").onclick = (e) => {
       const b = e.target.closest("button[data-termo]");
-      if (b) location.href = urlBusca(b.dataset.termo, $("pais").value);
+      if (b) irPara(b.dataset.termo, $("pais").value);
     };
     $("lado").addEventListener("click", (e) => {
       const b = e.target.closest("button[data-passo]");
@@ -440,15 +431,14 @@
     grade.addEventListener("click", aoClicarCard);
   }
 
-  function urlBusca(termo, pais) {
-    // Aspas pedem a frase exata, igual na Biblioteca.
-    const exata = /^".+"$/.test(termo);
-    const p = new URLSearchParams({
-      active_status: "active", ad_type: "all", country: pais, is_targeted_country: "false",
-      media_type: "all", q: termo, search_type: exata ? "keyword_exact_phrase" : "keyword_unordered",
-      "sort_data[mode]": "total_impressions", "sort_data[direction]": "desc",
-    });
-    return "https://www.facebook.com/ads/library/?" + p;
+  // Mesma URL do popup e do minerador (busca.js): com o idioma e o corte de dias
+  // salvos. Sem isso a grade mostrava uma busca e "Minerar esta busca" coletava
+  // outra. País e termo ficam salvos para o popup abrir igual.
+  async function irPara(termo, pais) {
+    const s = await chrome.storage.local.get(WM_CHAVES_CONFIG);
+    const cfg = wmConfigPesquisa({ ...s, pais });
+    await chrome.storage.local.set({ pais, termo });
+    location.href = wmUrlBusca({ termo, pais, idioma: cfg.idioma, minDias: cfg.minDias });
   }
 
   // ---------------------------------------------------------------- filtros
@@ -606,7 +596,7 @@
   function telaInicial() {
     return `${onda(56)}<h2>Qual nicho vamos garimpar?</h2>
       Busque acima ou comece por um termo. Nada é coletado até você pedir.
-      <div class="cats">${CATEGORIAS.map(([nome, termos]) => `<details>
+      <div class="cats">${wmSugestoes(raiz.getElementById("pais").value, idiomaSalvo).map(([nome, termos]) => `<details>
         <summary>${esc(nome)}<span class="num">${termos.length}</span></summary>
         <div class="chips">${termos.map((t) => `<button data-termo="${esc(t)}">${esc(t)}</button>`).join("")}</div>
       </details>`).join("")}</div>`;
@@ -758,20 +748,14 @@
     }, { root: principal, rootMargin: "0px 0px 600px 0px" }).observe(mais);
   }
 
-  // Mesmos padrões do popup, para o botão daqui e o de lá fazerem a mesma pesquisa.
+  // Mesmo montador do popup (busca.js). País e termo vêm da busca aberta: é ela
+  // que você está vendo e é ela que vai ser minerada.
   async function configuracao() {
-    const s = await chrome.storage.local.get(["token", "idioma", "minAds", "minDias", "maxAnuncios",
-      "timeout", "paradas", "profunda", "maxAnunciantes", "abrirDashboard"]);
+    const s = await chrome.storage.local.get(["token", ...WM_CHAVES_CONFIG]);
     return {
       token: s.token,
-      cfg: {
-        termo: termoUrl, pais: params.get("country") || "BR", idioma: s.idioma || "",
-        minAnuncios: s.minAds ?? 2, minDias: s.minDias ?? 3,
-        maxAnuncios: (s.maxAnuncios == null || s.maxAnuncios === 60) ? 150 : s.maxAnuncios,
-        timeoutMs: (s.timeout ?? 300) * 1000, paradasMax: s.paradas ?? 12,
-        varreduraProfunda: !!s.profunda, maxAnunciantes: s.maxAnunciantes ?? 8,
-        usarAbaAtual: false, abrirDashboard: !!s.abrirDashboard,
-      },
+      cfg: wmConfigPesquisa({ ...s, pais: paisUrl || s.pais || "BR" },
+                            { termo: termoUrl, usarAbaAtual: false }),
     };
   }
 
@@ -814,9 +798,11 @@
   }
 
   async function iniciar() {
-    const s = await chrome.storage.local.get(["visaoAtiva", "visaoFiltros", "visaoSalvos", "status", "execucao"]);
+    const s = await chrome.storage.local.get(["visaoAtiva", "visaoFiltros", "visaoSalvos", "status", "execucao", "idioma", "pais"]);
     for (const k of GUARDADOS) if (s.visaoFiltros && s.visaoFiltros[k] !== undefined) filtros[k] = s.visaoFiltros[k];
     salvos = new Set(s.visaoSalvos || []);
+    idiomaSalvo = s.idioma || "";
+    paisSalvo = s.pais || "";
     lerExecucao(s.execucao);
 
     const quandoPronto = () => {
