@@ -13,6 +13,11 @@
 
   const CSS = `
     :host { all: initial; }
+    /* \`all: initial\` também zera o display:none que o atributo hidden dá:
+       sem esta linha "Ver Biblioteca" não fechava nada, a grade ficava por cima
+       sem a classe que esconde a rolagem da página (duas barras) e parava de
+       repintar enquanto carregava. */
+    :host([hidden]) { display: none !important; }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
     .vg {
@@ -188,6 +193,7 @@
     .vazio { max-width: 460px; margin: 11vh auto 0; text-align: center; color: var(--suave); }
     .vazio h2 { margin: 0 0 8px; color: var(--txt); font-size: 24px; letter-spacing: -.02em; }
     .mais { display: block; margin: 22px auto 0; }
+    .fim { margin: 14px 0 0; color: var(--fraco); font-size: 12px; text-align: center; }
     .hero { max-width: 780px; margin: 8vh auto 0; text-align: center; color: var(--suave); }
     .hero .onda { margin: 0 auto 16px; }
     .hero h2 { margin: 0 0 8px; color: var(--txt); font-size: 34px; line-height: 1.15; letter-spacing: -.025em; }
@@ -279,6 +285,8 @@
   let verTodos = false;
   let carregando = false;
   let minerando = false;
+  let naTela = 0;            // cards na grade depois de filtro e agrupamento
+  let semNovidade = false;   // a última carga não trouxe nada: o fim da lista
 
   let host, raiz, grade;
   const cartoes = new Map();
@@ -356,7 +364,8 @@
             </div>
             <div class="grade" id="grade"></div>
             <div class="vazio" id="vazio" hidden></div>
-            <button class="btn mais" id="mais" hidden title="Rola a Biblioteca para carregar mais anúncios. Não envia nada ao WaveMiner.">Carregar mais 30</button>
+            <button class="btn mais" id="mais" hidden title="Rola a Biblioteca para carregar mais anúncios. Não envia nada ao WaveMiner. Também carrega sozinho quando você chega ao fim da lista.">Carregar mais 30</button>
+            <p class="fim" id="fim" hidden></p>
           </main>
         </div>
       </div>`;
@@ -614,6 +623,7 @@
     for (const a of todos) contagem.set(a.page_id, (contagem.get(a.page_id) || 0) + 1);
 
     const grupos = ordenar(agrupar(visiveis), porPagina);
+    naTela = grupos.length;
 
     // resumo
     const total = window.__minerador.total;
@@ -679,7 +689,13 @@
     $("guia-n").textContent = total != null ? mil(total) : "";
     $("mais").hidden = !emBusca || vazioTotal;
     $("mais").disabled = carregando || minerando;
-    $("mais").textContent = carregando ? "Carregando…" : "Carregar mais 30";
+    $("mais").textContent = carregando ? `Carregando… ${mil(todos.length)} carregados`
+      : semNovidade ? "Tentar carregar de novo" : "Carregar mais 30";
+    const acabou = total != null && todos.length >= total;
+    $("fim").hidden = !emBusca || vazioTotal || carregando || !(semNovidade || acabou);
+    $("fim").textContent = acabou ? "Todos os resultados desta busca já foram carregados."
+      : "A Biblioteca não entregou anúncios novos. Ela pode estar no fim da lista ou "
+        + "demorando — tente de novo em alguns segundos.";
     pintarMinerar();
   }
 
@@ -691,18 +707,42 @@
 
   // ---------------------------------------------------------------- ações
 
+  // "Mais 30" é mais 30 CARDS na tela. Contar anúncio cru fazia o botão parecer
+  // quebrado: 30 anúncios novos que eram cópias do mesmo criativo (ou barrados
+  // pelos filtros) viravam 2 ou 3 cards — ou nenhum.
   async function carregarMais() {
-    if (carregando) return;
+    if (carregando || minerando) return;
     carregando = true;
+    semNovidade = false;
+    const antes = window.__minerador.anuncios.size;
+    const alvo = naTela + 30;
     pintar();
     try {
       await rolarAteJuntar({
-        alvo: window.__minerador.anuncios.size + 30, timeoutMs: 60000, paradasMax: 6,
+        alvo,
+        // a contagem de cards só existe depois de pintar: pinta aqui mesmo
+        contar: () => { pintar(); return naTela; },
+        // Fim de lista com filtro apertado pode precisar de muitos anúncios
+        // crus para render 30 cards: teto de 2 minutos e 8 rodadas paradas.
+        timeoutMs: 120000, paradasMax: 8, gesto: false, faixa: false,
       });
     } finally {
       carregando = false;
+      semNovidade = window.__minerador.anuncios.size === antes;
       pintar();
     }
+  }
+
+  // Chegou ao fim da grade? Carrega sozinho, uma vez por chegada. Não insiste
+  // quando a última carga voltou vazia — aí fica o botão para tentar de novo.
+  function ligarCargaAutomatica() {
+    const principal = raiz.getElementById("principal");
+    const mais = raiz.getElementById("mais");
+    new IntersectionObserver((itens) => {
+      if (!itens.some((i) => i.isIntersecting)) return;
+      if (host.hidden || mais.hidden || carregando || minerando || semNovidade) return;
+      carregarMais();
+    }, { root: principal, rootMargin: "0px 0px 600px 0px" }).observe(mais);
   }
 
   // Mesmos padrões do popup, para o botão daqui e o de lá fazerem a mesma pesquisa.
@@ -768,6 +808,7 @@
 
     const quandoPronto = () => {
       montar();
+      ligarCargaAutomatica();
       mostrarGrade(s.visaoAtiva !== false);
       mostrarStatus(s.status);
       pintar();

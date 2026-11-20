@@ -278,13 +278,18 @@ function contarUteis() {
   return n;
 }
 
-async function rolarAteJuntar({ alvo, timeoutMs, paradasMax = 12, soUteis = false }) {
+// `contar`: quem chama decide o que conta para o alvo (a grade conta cards na
+// tela, não anúncio cru). `gesto: false` desliga o freio por roda/teclado — na
+// grade você rola os cards, não a Biblioteca, e rolar para cima parava a carga.
+// `faixa: false` some com a faixa do topo, que ficaria escondida atrás da grade.
+async function rolarAteJuntar({ alvo, timeoutMs, paradasMax = 12, soUteis = false,
+                                contar = null, gesto = true, faixa = true }) {
   const inicio = Date.now();
   let parados = 0;
   let anterior = -1;
-  coletando = true;
+  coletando = gesto;
   pedidoParar = false;
-  const juntados = () => (soUteis ? contarUteis() : anuncios.size);
+  const juntados = contar || (() => (soUteis ? contarUteis() : anuncios.size));
 
   try {
     // `paradasMax` é quantas rodadas sem anúncio novo antes de desistir. Com 5
@@ -293,9 +298,11 @@ async function rolarAteJuntar({ alvo, timeoutMs, paradasMax = 12, soUteis = fals
     while (juntados() < alvo && parados < paradasMax && !pedidoParar
            && Date.now() - inicio < timeoutMs) {
       const restam = Math.ceil((timeoutMs - (Date.now() - inicio)) / 1000);
-      mostrarFaixa(`WaveMiner coletando… ${anuncios.size} anúncios`
-        + (soUteis ? ` (${juntados()}/${alvo} com link de venda)` : "") + ` · ${restam}s`
-        + " — role para cima ou Esc para parar");
+      if (faixa) {
+        mostrarFaixa(`WaveMiner coletando… ${anuncios.size} anúncios`
+          + (soUteis ? ` (${juntados()}/${alvo} com link de venda)` : "") + ` · ${restam}s`
+          + " — role para cima ou Esc para parar");
+      }
       window.scrollTo(0, document.body.scrollHeight);
       // Alguns layouts paginam num container interno em vez do body.
       for (const el of document.querySelectorAll('div[style*="overflow"]')) {

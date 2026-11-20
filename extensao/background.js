@@ -19,8 +19,17 @@ async function cfg() {
 
 // Chaves antigas faziam a mineração começar ao abrir a Biblioteca. Quem já tinha
 // o toggle ligado volta para o desligado: minerar só com comando explícito.
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
   chrome.storage.local.remove(["auto", "autoRolar"]);
+  // Até a 1.10 o "Ver Biblioteca" da grade gravava visaoAtiva = false sem
+  // esconder nada (bug do :host). Quem clicou ficou com a grade "desligada"
+  // na memória e ligada na tela; agora que desligar funciona, ela sumiria sem
+  // aviso. Volta para ligada uma única vez.
+  const s = await chrome.storage.local.get("visaoReiniciada");
+  if (!s.visaoReiniciada) {
+    await chrome.storage.local.remove("visaoAtiva");
+    await chrome.storage.local.set({ visaoReiniciada: true });
+  }
 });
 
 // O service worker do MV3 é encerrado quando fica ocioso — e uma pesquisa de
