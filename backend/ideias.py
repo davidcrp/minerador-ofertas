@@ -390,21 +390,51 @@ def _gemini_uma_vez(modelo: str, prompt: str, timeout: float) -> dict:
     return _resposta("".join(p.get("text", "") for p in partes))
 
 
+# Medido em nov/2026: os Flash vivem cheios no plano gratuito (503 em segundos
+# ou leitura travada até 40s), os Flash-Lite respondem em ~2s. Tentar um por
+# vez com 22s cada esgotava o tempo antes de chegar no Lite — a resposta caía
+# nas regras locais e vinha sempre a mesma lista ("a ideia não atualiza").
+# Agora todos saem juntos: o Flash (melhor) tem VANTAGEM_FLASH segundos de
+# preferência; se não vier, fica o Lite que já chegou.
+VANTAGEM_FLASH = 9
+PRAZO_IA = 30          # bem abaixo dos 60s da função na Vercel
+
+
 def gerar_gemini(ideia: str, idioma: str) -> dict:
-    """Tenta cada modelo da fila. O teto total fica abaixo dos 60s da Vercel."""
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+
     prompt = _prompt(ideia, idioma)
-    fim = time.monotonic() + 48
-    ultimo = None
-    for modelo in modelos_gemini():
-        resta = fim - time.monotonic()
-        if resta < 8:
-            break
-        try:
-            return _gemini_uma_vez(modelo, prompt, timeout=min(22, resta))
-        except Exception as e:      # 503 cheio, 429 cota, timeout: próximo modelo
-            ultimo = e
-            print(f"ideias: Gemini {modelo} falhou:", str(e)[:160])
-    raise ultimo or RuntimeError("sem tempo para o Gemini")
+    fila = modelos_gemini()
+    inicio = time.monotonic()
+    pool = ThreadPoolExecutor(max_workers=len(fila))
+    tarefas = {pool.submit(_gemini_uma_vez, m, prompt, PRAZO_IA - 2): m for m in fila}
+    pendentes, reserva, ultimo = set(tarefas), None, None
+    try:
+        while pendentes:
+            agora = time.monotonic() - inicio
+            # com reserva na mão, só espera o Flash até o fim da vantagem
+            limite = (VANTAGEM_FLASH if reserva else PRAZO_IA) - agora
+            if limite <= 0:
+                break
+            prontas, pendentes = wait(pendentes, timeout=limite, return_when=FIRST_COMPLETED)
+            for f in prontas:
+                modelo = tarefas[f]
+                try:
+                    r = f.result()
+                except Exception as e:      # 503 cheio, 429 cota, timeout
+                    ultimo = e
+                    print(f"ideias: Gemini {modelo} falhou:", str(e)[:160])
+                    continue
+                if "lite" not in modelo:
+                    return {**r, "modelo": modelo}
+                reserva = reserva or {**r, "modelo": modelo}
+            if reserva and not any("lite" not in tarefas[f] for f in pendentes):
+                break                       # não sobrou Flash para esperar
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    if reserva:
+        return reserva
+    raise ultimo or RuntimeError("nenhum modelo respondeu a tempo")
 
 
 # ---- Claude
