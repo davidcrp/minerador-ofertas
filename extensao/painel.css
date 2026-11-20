@@ -9,13 +9,13 @@
   flex-direction: column;
   min-width: 250px;
   min-height: 120px;
-  background: #05070a;
-  border: 1px solid #1e2936;
+  background: #04060a;
+  border: 1px solid #2a3748;
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
   overflow: hidden;
-  font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: #fff;
+  font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #edf2f8;
 }
 
 .mnp-painel * { box-sizing: border-box; }
@@ -27,32 +27,41 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 8px;
-  background: #0b1017;
+  padding: 6px 6px 6px 12px;
+  background: #0a0f16;
+  border-bottom: 1px solid #1a2430;
   cursor: grab;
   user-select: none;
   flex: 0 0 auto;
 }
 
 .mnp-cabeca.mnp-arrastando { cursor: grabbing; }
-.mnp-titulo { flex: 1; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
-.mnp-titulo b { color: #2f8bff; }
+.mnp-titulo { flex: 1; font-size: 14px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.mnp-titulo b { color: #3b8fff; font-weight: 700; }
 
+/* mesmo botão de ícone da grade (.ico em visao.js) */
 .mnp-cabeca button {
-  width: 22px;
-  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, .12);
-  color: #fff;
-  font: 600 12px/1 system-ui, sans-serif;
+  border-radius: 8px;
+  background: none;
+  color: #8b9cb0;
   cursor: pointer;
 }
 
-.mnp-cabeca button:hover { background: rgba(255, 255, 255, .28); }
+.mnp-cabeca button:hover { background: #121924; color: #edf2f8; }
+.mnp-cabeca button svg, .mnp-fab svg {
+  width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round; display: block;
+}
+.mnp-fab svg { width: 20px; height: 13px; stroke-width: 2.4; }
 
-.mnp-corpo { flex: 1 1 auto; min-height: 0; background: #05070a; }
+.mnp-corpo { flex: 1 1 auto; min-height: 0; background: #04060a; }
 .mnp-corpo iframe { width: 100%; height: 100%; border: 0; display: block; }
 
 .mnp-painel.mnp-recolhido { height: auto !important; min-height: 0; }
@@ -68,9 +77,9 @@
   width: 16px;
   height: 16px;
   cursor: nwse-resize;
-  background: linear-gradient(135deg, transparent 45%, #2f8bff 45%, #2f8bff 62%,
-                              transparent 62%, transparent 72%, #2f8bff 72%,
-                              #2f8bff 88%, transparent 88%);
+  background: linear-gradient(135deg, transparent 45%, #2a3748 45%, #2a3748 62%,
+                              transparent 62%, transparent 72%, #2a3748 72%,
+                              #2a3748 88%, transparent 88%);
 }
 
 /* Enquanto arrasta/redimensiona o iframe não pode roubar o ponteiro. */
@@ -83,23 +92,23 @@
   z-index: 2147483646;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 9px 13px;
+  gap: 8px;
+  padding: 10px 15px;
   border: 0;
   border-radius: 999px;
-  background: #2f8bff;
-  color: #03142b;
-  font: 700 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #3b8fff;
+  color: #021226;
+  font: 700 13px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
   cursor: pointer;
   box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
 }
 
-.mnp-fab:hover { background: #1f73e0; }
+.mnp-fab:hover { background: #5ea4ff; }
 
 /* Plano B: se o Facebook barrar o iframe da extensão por CSP. */
 .mnp-aviso {
   padding: 14px;
-  background: #05070a;
+  background: #04060a;
   color: #e8eef5;
   font: 12px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -110,8 +119,8 @@
   padding: 9px;
   border: 0;
   border-radius: 8px;
-  background: #2f8bff;
-  color: #03142b;
+  background: #3b8fff;
+  color: #021226;
   font-weight: 700;
   cursor: pointer;
 }
@@ -124,7 +133,7 @@
   right: 0;
   z-index: 2147483647;
   padding: 8px 14px;
-  background: #0b1017;
+  background: #0a0f16;
   color: #fff;
   font: 700 12px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
   text-align: center;

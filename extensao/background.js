@@ -1,6 +1,8 @@
 // Service worker: orquestra a pesquisa (abrir aba -> coletar -> varrer
 // anunciantes -> enviar pro backend) e guarda o estado pro popup ler.
 
+importScripts("busca.js");
+
 const PADRAO_API = "https://minerador-ofertas-umber.vercel.app";
 
 // ------------------------------------------------------------------ estado
@@ -19,8 +21,17 @@ async function cfg() {
 
 // Chaves antigas faziam a mineração começar ao abrir a Biblioteca. Quem já tinha
 // o toggle ligado volta para o desligado: minerar só com comando explícito.
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
   chrome.storage.local.remove(["auto", "autoRolar"]);
+  // Até a 1.10 o "Ver Biblioteca" da grade gravava visaoAtiva = false sem
+  // esconder nada (bug do :host). Quem clicou ficou com a grade "desligada"
+  // na memória e ligada na tela; agora que desligar funciona, ela sumiria sem
+  // aviso. Volta para ligada uma única vez.
+  const s = await chrome.storage.local.get("visaoReiniciada");
+  if (!s.visaoReiniciada) {
+    await chrome.storage.local.remove("visaoAtiva");
+    await chrome.storage.local.set({ visaoReiniciada: true });
+  }
 });
 
 // O service worker do MV3 é encerrado quando fica ocioso — e uma pesquisa de
@@ -72,60 +83,10 @@ async function status(texto, extra = {}) {
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Termo entre aspas pede a frase exata, igual na Biblioteca (e igual visao.js).
-const fraseExata = (termo) => /^".+"$/.test(String(termo || "").trim());
-
-// AAAA-MM-DD de N dias atrás, no fuso de quem está usando.
-function diaAtras(n) {
-  const d = new Date(Date.now() - n * 86400000);
-  const dois = (v) => String(v).padStart(2, "0");
-  return `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`;
-}
-
-function montarUrl({ termo, pageId, pais = "BR", ativos = true, idioma = "", minDias = 0 }) {
-  const p = [
-    `active_status=${ativos ? "active" : "all"}`,
-    "ad_type=all",
-    `country=${pais}`,
-    "media_type=all",
-  ];
-  // Filtro de idioma da Biblioteca: com país hispano + idioma "es" a busca
-  // deixa de trazer anúncio em inglês/português rodando no mesmo mercado.
-  if (idioma) p.push(`content_languages[0]=${encodeURIComponent(idioma)}`);
-  if (pageId) {
-    p.push(`view_all_page_id=${encodeURIComponent(pageId)}`, "search_type=page");
-  } else {
-    termo = String(termo || "").trim();
-    p.push(`q=${encodeURIComponent(termo)}`,
-      `search_type=${fraseExata(termo) ? "keyword_exact_phrase" : "keyword_unordered"}`,
-      // quem mais entrega primeiro: o topo da busca é o que está escalando
-      "sort_data[mode]=total_impressions", "sort_data[direction]=desc");
-    // O corte de tempo mínimo vai para a própria Biblioteca. Antes ela devolvia
-    // tudo e o filtro jogava fora depois: com 7+ dias, boa parte do limite de
-    // coleta e do tempo de rolagem ia embora em anúncio novo demais.
-    // A Biblioteca lê a data como "antes de": pedir (minDias - 1) dias atrás
-    // devolve o que começou há minDias ou mais.
-    if (minDias > 0) p.push(`start_date[max]=${diaAtras(minDias - 1)}`);
-  }
-  return "https://www.facebook.com/ads/library/?" + p.join("&");
-}
-
-// Mesma busca? Então não recarrega a aba: recarregar joga fora o que a página
-// já tinha carregado e faz a Biblioteca começar do zero.
-function mesmaBusca(a, b) {
-  try {
-    const [x, y] = [new URL(a).searchParams, new URL(b).searchParams];
-    const igual = (k) => (x.get(k) || "") === (y.get(k) || "");
-    if (!["q", "country", "active_status", "view_all_page_id", "start_date[max]"].every(igual)) {
-      return false;
-    }
-    // frase exata e palavras soltas são buscas diferentes com o mesmo `q`
-    const exata = (s) => s.get("search_type") === "keyword_exact_phrase";
-    return exata(x) === exata(y);
-  } catch (e) {
-    return false;
-  }
-}
+// Montar e comparar buscas mora em busca.js, o mesmo arquivo que o popup e a
+// grade usam: um termo, uma URL — venha de onde vier o clique.
+const montarUrl = wmUrlBusca;
+const mesmaBusca = wmMesmaBusca;
 
 // Depois de trocar a URL, a página ANTIGA continua respondendo ao PING até a
 // navegação começar de fato. Sem esperar a aba chegar na URL nova e terminar
@@ -502,7 +463,9 @@ async function pesquisar(p) {
     // lote curto agora, o resto no fim da fila.
     await moerMidias(r.midias_pendentes, p.emFila ? 12 : 60);
 
-    await status(`Pronto: ${r.novos} novos de ${r.recebidos} com cara de low ticket`
+    const caraLow = lista.filter((a) => a.low_copy).length;
+    await status(`Pronto: ${r.novos} novos de ${r.recebidos} enviados`
+      + (caraLow ? `, ${caraLow} com preço baixo ou checkout na copy` : "")
       + ` (${coletados - comLink.length} sem link de venda`
       + (fracos ? `, ${fracos} de anunciante com menos de ${minAds} anúncios` : "")
       + ` descartados).`
@@ -657,8 +620,7 @@ async function minerarAuto(conf) {
   manterVivo(true);
   let buscas = 0, novos = 0, lowAntes = null, falhasSeguidas = 0, ultimoErro = "";
   try {
-    const idioma = conf.idioma || (["MX", "AR", "CO", "CL", "PE", "EC", "UY", "ES"]
-      .includes(conf.pais) ? "es" : "pt");
+    const idioma = wmIdiomaDe(conf.pais, conf.idioma);
     await status("Mineração automática: montando palavras-chave…");
     const [lista, resumo] = await Promise.all([
       api(`/api/auto/termos?idioma=${idioma}`, null, "GET"),

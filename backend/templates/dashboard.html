@@ -21,12 +21,12 @@
      único destaque azul para número, ação e aba ativa. */
   :root { --bg:#f5f7fb; --card:#ffffff; --card2:#f7f9fc; --linha:#e7ebf2;
           --txt:#1b2333; --suave:#6f7a90; --fraco:#b9c1cf; --icone:#97a1b3; --copy:#4a5568;
-          --acc:#2563eb; --acc2:var(--acc2); --acc-borda:#cbdcff; --acc-sombra:rgba(37,99,235,.28);
+          --acc:#2563eb; --acc2:#eaf1ff; --acc-borda:#cbdcff; --acc-sombra:rgba(37,99,235,.28);
           --verde:#16a34a; --verde2:#e8f7ee; --verde-borda:#c6ebd4;
-          --amarelo:#f5a524; --amarelo2:var(--amarelo2); --amarelo-borda:var(--amarelo-borda); --amarelo-txt:var(--amarelo-txt);
-          --hover:#fafbfe; --vidro:var(--vidro); --aviso:#1b2333; --aviso-acao:#93b7ff;
+          --amarelo:#f5a524; --amarelo2:#fff6e5; --amarelo-borda:#f6dca8; --amarelo-txt:#9a6400;
+          --hover:#fafbfe; --vidro:rgba(255,255,255,.92); --aviso:#1b2333; --aviso-acao:#93b7ff;
           --sombra:0 1px 2px rgba(16,24,40,.04), 0 4px 14px rgba(16,24,40,.06);
-          --sombra-forte:var(--sombra-forte);
+          --sombra-forte:0 2px 6px rgba(16,24,40,.08), 0 14px 32px rgba(16,24,40,.14);
           color-scheme:light; }
   /* Escuro: azul-marinho em vez de preto puro, cartão um degrau acima do fundo
      e o azul de destaque um pouco mais claro para manter contraste. */
@@ -275,6 +275,48 @@
   .tema-btn:hover { border-color:var(--acc); color:var(--acc); }
   .filtros input::placeholder { color:var(--fraco); }
   body, header, .filtros, .card, .cartao, .wrap { transition:background-color .2s, border-color .2s; }
+
+  /* ------------------------------------------------ gaveta de detalhes */
+  .gaveta[hidden], .gaveta-fundo[hidden] { display:none; }
+  [data-detalhe] { cursor:pointer; }
+  [data-detalhe]:hover { color:var(--acc); }
+  .gaveta-fundo { position:fixed; inset:0; background:rgba(8,12,20,.45); z-index:20; }
+  .gaveta { position:fixed; top:0; right:0; bottom:0; width:min(560px, 100vw); z-index:21;
+            background:var(--card); box-shadow:var(--sombra-forte); display:flex;
+            flex-direction:column; }
+  .gaveta header { position:static; height:auto; padding:16px 20px; gap:12px;
+                   align-items:flex-start; }
+  .gaveta header h2 { margin:0; font-size:17px; line-height:1.3; }
+  .gaveta header .sub { color:var(--suave); font-size:12px; }
+  .gaveta .fechar { margin-left:auto; border:1px solid var(--linha); background:var(--card);
+                    color:var(--txt); border-radius:9px; width:34px; height:34px; cursor:pointer; }
+  .gaveta .rolar { overflow-y:auto; padding:16px 20px 30px; }
+  .gaveta .links { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+  .gaveta .links a, .gaveta .links button { border:1px solid var(--linha); border-radius:999px;
+        padding:6px 12px; font:600 12px "Poppins", system-ui, sans-serif; background:var(--card2);
+        color:var(--txt); cursor:pointer; }
+  .gaveta .links a:hover, .gaveta .links button:hover { border-color:var(--acc); color:var(--acc);
+        text-decoration:none; }
+  .gaveta .nota { width:100%; min-height:70px; padding:10px; border:1px solid var(--linha);
+        border-radius:10px; background:var(--card2); color:var(--txt); resize:vertical;
+        font:13px "Poppins", system-ui, sans-serif; margin:4px 0 16px; }
+  .gaveta h3 { font-size:13px; margin:6px 0 10px; color:var(--suave); font-weight:600; }
+  .anuncio { display:grid; grid-template-columns:84px 1fr; gap:12px; padding:12px 0;
+             border-top:1px solid var(--linha); }
+  .anuncio img, .anuncio .sem { width:84px; height:84px; border-radius:10px; object-fit:cover;
+             background:var(--card2); display:grid; place-items:center; color:var(--fraco);
+             font-size:11px; }
+  .anuncio .meta { font-size:12px; color:var(--suave); }
+  .anuncio .meta b { color:var(--txt); }
+  .anuncio .txt { font-size:12.5px; color:var(--copy); white-space:pre-wrap; overflow-wrap:anywhere;
+                  max-height:7.5em; overflow:hidden; margin:4px 0; }
+  .anuncio .txt.aberto { max-height:none; }
+  .anuncio .acoes-a { display:flex; flex-wrap:wrap; gap:10px; font-size:12px; }
+  .anuncio .acoes-a button { border:0; background:none; color:var(--acc); padding:0;
+        font:600 12px "Poppins", system-ui, sans-serif; cursor:pointer; }
+  .nota-card { font-size:12px; color:var(--amarelo-txt); background:var(--amarelo2);
+               border:1px solid var(--amarelo-borda); border-radius:8px; padding:5px 8px;
+               margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -314,6 +356,10 @@
     <div class="checks">
       <label title="Preço detectado até R$ 50 (ou o valor em &quot;até&quot;), com página de checkout e site que vende. Sem preço, perfil, app e WhatsApp ficam de fora."><input type="checkbox" id="f-low"> ⚡ só low ticket</label>
       <label title="Mostra uma linha por oferta: quando o mesmo checkout ou site é anunciado por várias páginas, fica a mais forte e a etiqueta diz quantas são."><input type="checkbox" id="f-agrupar"> agrupar mesma oferta</label>
+      <label title="30+ dias no ar e criativo novo nos últimos 14"><input type="checkbox" class="f-sinal" value="escalando"> 🔥 escalando</label>
+      <label title="50% mais anúncios ativos do que na foto antiga (últimos 30 dias)"><input type="checkbox" class="f-sinal" value="crescendo"> 📈 crescendo</label>
+      <label title="Mesma oferta anunciada por 2 ou mais páginas"><input type="checkbox" class="f-sinal" value="rede"> 🕸 em rede</label>
+      <label title="Anunciante que entrou no minerador nas últimas 24 horas"><input type="checkbox" class="f-sinal" value="novo"> 🆕 novos 24h</label>
       <label><input type="checkbox" id="f-com-foto"> com foto</label>
       <label><input type="checkbox" id="f-com-preco"> com preço</label>
       <label><input type="checkbox" id="f-so-venda"> só quem vende</label>
@@ -332,6 +378,9 @@
         <option value="anuncios_ativos">Mais anúncios ativos</option>
         <option value="dias_rodando">Mais tempo rodando</option>
         <option value="preco">Menor preço</option>
+        <option value="crescimento">Mais cresceu</option>
+        <option value="rede_ativos">Maior rede (anúncios na oferta)</option>
+        <option value="dias_novo">Criativo mais novo</option>
         <option value="page_name">Nome (A-Z)</option>
       </select>
       <button class="visao ativa" data-visao="tabela" title="Tabela: tudo lado a lado">▤ Tabela</button>
@@ -372,6 +421,24 @@
   <div class="vazio-msg" id="vazio" hidden>Nenhuma oferta ainda. Rode uma pesquisa pela extensão.</div>
 </main>
 
+<div class="gaveta-fundo" id="gaveta-fundo" hidden></div>
+<aside class="gaveta" id="gaveta" hidden aria-label="Detalhes do anunciante">
+  <header>
+    <div><h2 id="g-nome"></h2><div class="sub" id="g-sub"></div></div>
+    <button class="fechar" id="g-fechar" title="Fechar (Esc)">✕</button>
+  </header>
+  <div class="rolar">
+    <div id="g-sinais"></div>
+    <div class="links" id="g-links"></div>
+    <div id="g-nota-caixa" hidden>
+      <h3>📝 Anotação (salva sozinha)</h3>
+      <textarea class="nota" id="g-nota" maxlength="2000" placeholder="ex: testar com criativo de vídeo; preço subiu para R$ 27"></textarea>
+    </div>
+    <h3 id="g-titulo-anuncios">Anúncios</h3>
+    <div id="g-anuncios"></div>
+  </div>
+</aside>
+
 <div class="desfazer" id="desfazer" hidden>
   <span id="desfazer-txt"></span>
   <button id="desfazer-btn">Desfazer</button>
@@ -407,6 +474,8 @@ function params() {
   if ($("#f-low").checked) p.set("low", "1");
   if ($("#f-com-foto").checked) p.set("com_foto", "1");
   if ($("#f-agrupar").checked) p.set("agrupar", "1");
+  const sinais = [...document.querySelectorAll(".f-sinal:checked")].map(x => x.value);
+  if (sinais.length) p.set("sinal", sinais.join(","));
   return p;
 }
 
@@ -434,7 +503,10 @@ function resumoDe(itens) {
   return {
     anunciantes: itens.length,
     anuncios: itens.reduce((s, o) => s + (o.anuncios_ativos || 0), 0),
-    com_gateway: itens.filter(o => o.gateway).length,
+    escalando: itens.filter(o => o.escalando).length,
+    crescendo: itens.filter(o => o.crescendo).length,
+    em_rede: itens.filter(o => (o.rede_paginas || 0) > 1).length,
+    novos: itens.filter(o => o.novo).length,
     destinos_pendentes: 0,
   };
 }
@@ -461,9 +533,12 @@ function pintarCards(r) {
   $("#cards").innerHTML = [
     ["Anunciantes" + (escondidos > 0 ? ` · ${escondidos} fora do filtro` : ""), r.anunciantes],
     ["Anúncios ativos", r.anuncios],
-    ["Com gateway detectado", r.com_gateway],
+    ["🔥 Escalando", r.escalando],
+    ["📈 Crescendo", r.crescendo],
+    ["🕸 Em rede", r.em_rede],
+    ["🆕 Novos 24h", r.novos],
     ["Destinos na fila", r.destinos_pendentes],
-  ].map(([rot, n]) => `<div class="card"><div class="n">${n}</div><div class="r">${rot}</div></div>`).join("");
+  ].map(([rot, n]) => `<div class="card"><div class="n">${Number(n) || 0}</div><div class="r">${rot}</div></div>`).join("");
 }
 
 function pintarGateways() {
@@ -509,7 +584,10 @@ function ordenados() {
       if (nb === Infinity) return -1;
       return na - nb;                          // menor primeiro: oferta de entrada
     }
-    const va = a[k], vb = b[k];
+    // "Mais cresceu" = anúncios ganhos desde a foto antiga; sem foto, zero.
+    const v = (o) => k === "crescimento" ? (o.ativos_antes ? o.anuncios_ativos - o.ativos_antes : 0)
+      : k === "dias_novo" ? -(o.dias_novo ?? 9999) : o[k];
+    const va = v(a), vb = v(b);
     const cmp = typeof va === "number" ? va - vb : String(va).localeCompare(String(vb), "pt-BR");
     return ordem.asc ? cmp : -cmp;
   });
@@ -607,6 +685,7 @@ const sinaisHTML = (o) => {
       `Tinha ${n(o.ativos_antes)} anúncios ativos há ${n(o.ativos_antes_ha)} dias, agora ${n(o.anuncios_ativos)}`) : "",
     n(o.rede_paginas) > 1 ? t(`🕸 ${n(o.rede_paginas)} páginas · ${n(o.rede_ativos)} anúncios`,
       "Mesma oferta (mesmo checkout ou site) anunciada também por: " + (o.rede_nomes || []).join(", ")) : "",
+    o.novo ? t("🆕 novo", "Entrou no minerador nas últimas 24 horas") : "",
     o.sumida ? t(`não visto há ${n(o.visto_ha)}d`,
       "Não apareceu em nenhuma coleta desde então: pode ter parado. O score cai com o tempo.") : "",
     o.bloqueado ? t("🔒 site bloqueou a leitura",
@@ -630,7 +709,7 @@ function pintarCartoes(itens) {
         ${caixaHTML(o)}
         <div class="avatar" style="background:${corDe(o.page_name)}">${esc(iniciais(o.page_name))}</div>
         <div class="quem">
-          <div class="nome" title="${esc(o.page_name)}">${esc(o.page_name)}
+          <div class="nome" title="Ver os anúncios de ${esc(o.page_name)}" data-detalhe="${esc(o.page_id)}">${esc(o.page_name)}
             ${o.recuperado ? '<span class="tag rec">recuperado</span>' : ""}</div>
           <div class="visto">${(o.termos || []).length ? "Busca: " + o.termos.map(esc).join(", ")
             : (o.salvo_em ? "Salvo em " + esc(o.salvo_em) : esc(o.dominio || ""))}</div>
@@ -658,6 +737,7 @@ function pintarCartoes(itens) {
         </div>
         ${o.checkout_url && o.destino && !o.sem_lp
           ? `<div class="linha">Checkout: <a href="${esc(o.checkout_url)}" target="_blank" rel="noopener noreferrer">${esc(o.gateway || "abrir")} ↗</a></div>` : ""}
+        ${o.nota ? `<div class="nota-card" title="${esc(o.nota)}">📝 ${esc(o.nota)}</div>` : ""}
         ${o.copy ? `<div class="copy" title="${esc(o.copy)}">${esc(o.copy)}</div>` : ""}
       </div>
       <div class="capa">
@@ -675,7 +755,7 @@ function pintarMural(itens) {
         : fotoHTML(o, o.page_name)}
       ${acoesHTML(o)}
       <div class="legenda">
-        <div class="nome">${esc(o.page_name)}</div>
+        <div class="nome" data-detalhe="${esc(o.page_id)}">${esc(o.page_name)}</div>
         <div class="sub">${o.anuncios_ativos} ativos · ${o.dias_rodando}d${o.preco ? " · " + esc(o.preco) : ""}</div>
       </div>
     </div>`).join("");
@@ -703,8 +783,9 @@ function pintarTabela(itens) {
           : '<div class="foto-vazia">—</div>')}</td>
       <td class="num">${esc(o.score)}<div class="sub">${sinaisHTML(o)}</div></td>
       <td>
-        <div class="nome">${esc(o.page_name)}
+        <div class="nome" data-detalhe="${esc(o.page_id)}" title="Ver os anúncios">${esc(o.page_name)}
           ${o.recuperado ? '<span class="tag rec" title="Retrato remontado: sem métricas até a próxima coleta">recuperado</span>' : ""}</div>
+        ${o.nota ? `<div class="nota-card" title="${esc(o.nota)}">📝 ${esc(o.nota)}</div>` : ""}
         <div class="sub">${(o.termos || []).map(esc).join(", ")}${(o.paises || []).length ? " · " + o.paises.map(esc).join("/") : ""}${o.salvo_em ? " · salvo em " + esc(o.salvo_em) : ""}</div>
         ${o.url_biblioteca ? `<a class="sub" href="${esc(o.url_biblioteca)}" target="_blank" rel="noopener">ver na biblioteca ↗</a>` : ""}
       </td>
@@ -740,6 +821,8 @@ function cliqueNaLinha(e) {
   }
   const fav = e.target.closest("button[data-fav]");
   if (fav) return alternarFavorito(fav.dataset.fav);
+  const det = e.target.closest("[data-detalhe]");
+  if (det && det.dataset.detalhe) { e.preventDefault(); return abrirDetalhe(det.dataset.detalhe); }
   const x = e.target.closest("button[data-excluir]");
   if (x) excluir(x.dataset.excluir);
 }
@@ -899,7 +982,9 @@ lembrar("#f-low", "mn_low", true);
 lembrar("#f-com-foto", "mn_com_foto", false);
 lembrar("#f-agrupar", "mn_agrupar", true);
 
+document.querySelectorAll(".f-sinal").forEach(x => x.addEventListener("change", carregar));
 $("#btn-limpar-filtros").onclick = () => {
+  document.querySelectorAll(".f-sinal").forEach(x => { x.checked = false; });
   $("#f-ads").value = 1; $("#f-dias").value = 0;
   for (const id of ["#f-preco-min", "#f-preco-max", "#f-termo", "#f-q"]) $(id).value = "";
   $("#f-com-preco").checked = false;
@@ -916,9 +1001,102 @@ $("#btn-reprocessar").onclick = async () => {
   $("#fila").textContent = `${j.enfileirados} destinos reenfileirados`;
   moerFila();
 };
+// ------------------------------------------------ gaveta de detalhes
+// Todos os anúncios de um anunciante, para ler a oferta sem sair do painel:
+// copy inteira, CTA, link, idade de cada criativo. Em Melhores, a anotação.
+let detalheAtual = null, notaTimer;
+
+function fecharDetalhe() {
+  $("#gaveta").hidden = $("#gaveta-fundo").hidden = true;
+  detalheAtual = null;
+}
+
+async function abrirDetalhe(pageId) {
+  const o = lista().find(x => String(x.page_id) === String(pageId))
+    || dados.find(x => String(x.page_id) === String(pageId)) || { page_id: pageId, page_name: "" };
+  detalheAtual = String(pageId);
+  $("#gaveta").hidden = $("#gaveta-fundo").hidden = false;
+  $("#g-nome").textContent = o.page_name || "Anunciante";
+  $("#g-sub").textContent = [`${Number(o.anuncios_ativos) || 0} anúncios ativos`,
+    o.dias_rodando != null ? `${Number(o.dias_rodando)} dias rodando` : "",
+    o.preco ? `preço ${o.preco}` : "", o.gateway || ""].filter(Boolean).join(" · ");
+  $("#g-sinais").innerHTML = sinaisHTML(o) ? `<div class="pe" style="margin-bottom:12px">${sinaisHTML(o)}</div>` : "";
+  const links = [
+    o.url_biblioteca ? `<a href="${esc(o.url_biblioteca)}" target="_blank" rel="noopener">Ver na Biblioteca ↗</a>` : "",
+    o.destino ? `<a href="${esc(o.destino)}" target="_blank" rel="noopener noreferrer">Abrir LP ↗</a>` : "",
+    o.checkout_url ? `<a href="${esc(o.checkout_url)}" target="_blank" rel="noopener noreferrer">Abrir checkout ↗</a>` : "",
+    o.checkout_url ? `<button data-copiar="${esc(o.checkout_url)}">Copiar link do checkout</button>` : "",
+    o.destino ? `<button data-copiar="${esc(o.destino)}">Copiar link da LP</button>` : "",
+  ];
+  $("#g-links").innerHTML = links.join("");
+  const salvo = idsFav.has(String(pageId));
+  $("#g-nota-caixa").hidden = !salvo;
+  $("#g-nota").value = salvo ? ((melhores.find(x => String(x.page_id) === String(pageId)) || {}).nota || "") : "";
+  $("#g-titulo-anuncios").textContent = "Anúncios";
+  $("#g-anuncios").innerHTML = '<div class="sub">carregando…</div>';
+  if (String(pageId).startsWith("rec:")) {
+    $("#g-anuncios").innerHTML = '<div class="sub">Retrato recuperado: os anúncios voltam na próxima coleta deste anunciante.</div>';
+    return;
+  }
+  try {
+    const r = await fetch("/dados/anunciante/" + encodeURIComponent(pageId));
+    const j = await r.json();
+    if (detalheAtual !== String(pageId)) return;       // trocou de anunciante no meio
+    const ads = j.anuncios || [];
+    $("#g-titulo-anuncios").textContent = `Anúncios coletados (${ads.length})`;
+    $("#g-anuncios").innerHTML = ads.length ? ads.map((a, i) => `
+      <div class="anuncio">
+        ${a.capa ? `<img src="${esc(a.capa)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-sem="sem capa" data-resto="[]">` : '<div class="sem">sem capa</div>'}
+        <div>
+          <div class="meta"><b>${a.dias != null ? Number(a.dias) + " dias" : "—"}</b>
+            · ×${Number(a.variacoes) || 1} variações${a.cta_text ? " · " + esc(a.cta_text) : ""}${a.is_active ? "" : " · <b>inativo</b>"}
+            ${a.termo ? " · busca: " + esc(a.termo) : ""}</div>
+          ${a.titulo ? `<div class="meta"><b>${esc(a.titulo)}</b></div>` : ""}
+          <div class="txt" data-i="${i}">${esc(a.texto || "Sem texto")}</div>
+          <div class="acoes-a">
+            ${(a.texto || "").length > 300 ? `<button data-abrir="${i}">ver tudo</button>` : ""}
+            ${a.texto ? `<button data-copiar="${esc(a.texto)}">copiar copy</button>` : ""}
+            <a href="https://www.facebook.com/ads/library/?id=${encodeURIComponent(a.ad_archive_id)}" target="_blank" rel="noopener">na Biblioteca ↗</a>
+            ${a.link_url ? `<a href="${esc(a.link_url)}" target="_blank" rel="noopener noreferrer">${esc(a.dominio || "link")} ↗</a>` : ""}
+          </div>
+        </div>
+      </div>`).join("") : '<div class="sub">Nenhum anúncio guardado deste anunciante.</div>';
+  } catch (e) {
+    $("#g-anuncios").innerHTML = '<div class="sub">Não deu para carregar os anúncios.</div>';
+  }
+}
+
+$("#gaveta").addEventListener("click", async (e) => {
+  const c = e.target.closest("[data-copiar]");
+  if (c) {
+    try { await navigator.clipboard.writeText(c.dataset.copiar); c.textContent = "copiado ✓"; }
+    catch (erro) { c.textContent = "não deu para copiar"; }
+    return;
+  }
+  const ab = e.target.closest("[data-abrir]");
+  if (ab) {
+    const t = $(`#g-anuncios .txt[data-i="${ab.dataset.abrir}"]`);
+    t.classList.toggle("aberto");
+    ab.textContent = t.classList.contains("aberto") ? "ver menos" : "ver tudo";
+  }
+});
+$("#g-fechar").onclick = fecharDetalhe;
+$("#gaveta-fundo").onclick = fecharDetalhe;
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && detalheAtual) fecharDetalhe(); });
+$("#g-nota").addEventListener("input", () => {
+  clearTimeout(notaTimer);
+  const pageId = detalheAtual, nota = $("#g-nota").value;
+  notaTimer = setTimeout(async () => {
+    const r = await post("/dados/favoritos/nota", { page_id: pageId, nota });
+    const m = melhores.find(x => String(x.page_id) === pageId);
+    if (r.ok && m) { m.nota = nota; if (aba === "melhores") pintar(); }
+  }, 600);
+});
+
 $("#btn-csv").onclick = () => {
-  const cols = ["page_name", "paises", "anuncios_ativos", "dias_rodando", "dominio", "destino",
-                "gateway", "checkout_url", "preco", "score", "imagem", "url_biblioteca"];
+  const cols = ["page_name", "paises", "anuncios_ativos", "dias_rodando", "dias_novo", "dominio", "destino",
+                "gateway", "checkout_url", "preco", "score", "escalando", "crescendo",
+                "rede_paginas", "rede_ativos", "nota", "imagem", "url_biblioteca"];
   const linhas = [cols.join(",")].concat(lista().map(o =>
     cols.map(c => `"${String(o[c] ?? "").replace(/"/g, '""')}"`).join(",")));
   const url = URL.createObjectURL(new Blob(["﻿" + linhas.join("\n")], { type: "text/csv" }));

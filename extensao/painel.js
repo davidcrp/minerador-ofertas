@@ -137,11 +137,11 @@ function montar(geo) {
   painel.innerHTML = `
     <div class="mnp-cabeca">
       <span class="mnp-titulo" style="display:flex;align-items:center;gap:7px"><svg viewBox="0 0 28 18" width="20" height="13" fill="none" stroke="#3b8fff" stroke-width="2.4" stroke-linecap="round" style="display:block" aria-hidden="true"><path d="M2 7c4-5 7-5 10-1.500s7 3.500 14-1.500"/><path d="M2 14c4-5 7-5 10-1.500s7 3.500 14-1.500" opacity=".5"/></svg><span>Wave<b>Miner</b></span></span>
-      <button data-mnp="grade" title="Abrir a visão em grade">▦</button>
-      <button data-mnp="encostar" title="Encostar na outra borda">⇄</button>
-      <button data-mnp="opacidade" title="Transparência">◐</button>
-      <button data-mnp="recolher" title="Recolher (ou dê dois cliques no topo)">–</button>
-      <button data-mnp="fechar" title="Fechar">✕</button>
+      <button data-mnp="grade" title="Abrir a visão em grade" aria-label="Abrir a visão em grade"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg></button>
+      <button data-mnp="encostar" title="Encostar na outra borda" aria-label="Encostar na outra borda"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h13l-3-3M17 17H4l3 3"/></svg></button>
+      <button data-mnp="opacidade" title="Transparência" aria-label="Transparência"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18zM12 3a9 9 0 0 1 0 18"/></svg></button>
+      <button data-mnp="recolher" title="Recolher (ou dê dois cliques no topo)" aria-label="Recolher"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+      <button data-mnp="fechar" title="Fechar" aria-label="Fechar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
     <div class="mnp-corpo"><iframe title="WaveMiner" allow="clipboard-write"></iframe></div>
     <div class="mnp-pega" title="Arraste para redimensionar"></div>`;
@@ -152,7 +152,7 @@ function montar(geo) {
 
   fab = document.createElement("button");
   fab.className = "mnp-fab";
-  fab.textContent = "WaveMiner";
+  fab.innerHTML = '<svg viewBox="0 0 28 18" width="20" height="13" aria-hidden="true"><path d="M2 7c4-5 7-5 10-1.500s7 3.500 14-1.500"/><path d="M2 14c4-5 7-5 10-1.500s7 3.500 14-1.500" opacity=".5"/></svg>WaveMiner';
   fab.onclick = () => fechar(false);
   document.body.appendChild(fab);
 

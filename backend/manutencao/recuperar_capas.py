@@ -12,6 +12,12 @@ Também recomprime em WebP as capas antigas que estavam em JPEG.
 
 from __future__ import annotations
 
+import os as _os
+import sys as _sys
+
+# roda de dentro de manutencao/: os módulos do app moram uma pasta acima
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 from concurrent.futures import ThreadPoolExecutor
 
 import midias

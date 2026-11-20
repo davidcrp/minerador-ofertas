@@ -6,87 +6,111 @@
 </head>
 <body>
 
-<header>
-  <div class="logo" style="display:flex;align-items:center;gap:7px"><svg viewBox="0 0 28 18" width="20" height="13" fill="none" stroke="#3b8fff" stroke-width="2.4" stroke-linecap="round" style="display:block" aria-hidden="true"><path d="M2 7c4-5 7-5 10-1.500s7 3.500 14-1.500"/><path d="M2 14c4-5 7-5 10-1.500s7 3.500 14-1.500" opacity=".5"/></svg><span>Wave<b>Miner</b></span></div>
+<!-- Ícones no mesmo traço da grade (visao.js): nada de emoji, que muda de
+     cara em cada sistema e destoa do resto. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-casa" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></symbol>
+  <symbol id="i-ajuste" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 4v6M10 14v6"/></symbol>
+  <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-ideia" viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></symbol>
+  <symbol id="i-robo" viewBox="0 0 24 24"><path d="M6 9h12v10H6zM12 5v4M9 13h.01M15 13h.01M9 16h6M3 13v3M21 13v3"/></symbol>
+  <symbol id="i-foto" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9h.01"/></symbol>
+  <symbol id="i-seta" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+</svg>
+
+<header id="topo">
+  <div class="logo"><svg viewBox="0 0 28 18" width="22" height="14" class="onda" aria-hidden="true"><path d="M2 7c4-5 7-5 10-1.500s7 3.500 14-1.500"/><path d="M2 14c4-5 7-5 10-1.500s7 3.500 14-1.500" opacity=".5"/></svg><span>Wave<b>Miner</b></span></div>
   <div class="icones">
-    <button id="ir-dashboard" title="Abrir painel">🏠</button>
-    <button id="ir-config" title="Configurações">⚙️</button>
+    <button class="ico" id="ir-dashboard" title="Abrir o painel web" aria-label="Abrir o painel web"><svg><use href="#i-casa"/></svg></button>
+    <button class="ico" id="ir-config" title="Configurações de pesquisa" aria-label="Configurações de pesquisa"><svg><use href="#i-ajuste"/></svg></button>
   </div>
 </header>
 
 <!-- ---------------------------------------------------- login -->
 <section id="tela-login" hidden>
-  <label class="campo">Usuário
+  <label class="campo"><span class="rot">Usuário</span>
     <input id="login-user" autocomplete="username">
   </label>
-  <label class="campo">Senha
+  <label class="campo"><span class="rot">Senha</span>
     <input id="login-pass" type="password" autocomplete="current-password">
   </label>
-  <label class="campo">Servidor
+  <label class="campo"><span class="rot">Servidor</span>
     <input id="login-api" placeholder="https://minerador-ofertas-umber.vercel.app">
   </label>
-  <button class="primario" id="btn-entrar">ENTRAR</button>
+  <button class="btn forte cheio" id="btn-entrar">Entrar</button>
   <p class="aviso" id="login-erro" hidden></p>
 </section>
 
 <!-- ---------------------------------------------------- principal -->
 <section id="tela-main" hidden>
-  <div class="linha-topo">
-    <button class="btn-vermelho" id="btn-sair">SAIR</button>
-    <button class="btn-verde" id="btn-planos">VER PLANOS</button>
-  </div>
-  <p class="usos">Usos restantes: <b id="usos">—</b></p>
-
-  <label class="campo">Nicho / palavra-chave
+  <label class="campo"><span class="rot">Nicho ou palavra-chave</span>
     <div class="linha-termo">
-      <input id="termo" placeholder='ex: receitas fit — ou "por apenas r$" (aspas = frase exata)' title='Entre aspas a Biblioteca busca a frase exata; sem aspas, as palavras soltas em qualquer ordem.'>
-      <button id="btn-add-fila" title="Adicionar à fila">＋</button>
+      <input id="termo" placeholder='receitas fit, ou "por apenas r$"' title='Entre aspas a Biblioteca busca a frase exata; sem aspas, as palavras soltas em qualquer ordem.'>
+      <button class="ico borda" id="btn-add-fila" title="Adicionar à fila (aceita vários separados por vírgula)" aria-label="Adicionar à fila"><svg><use href="#i-mais"/></svg></button>
     </div>
   </label>
 
-  <label class="campo">💡 Ideia de produto
+  <label class="campo"><span class="rot">Ideia de produto</span>
     <div class="linha-termo">
       <input id="ideia" placeholder="ex: produtos para o natal">
-      <button id="btn-ideia" title="Gerar palavras-chave a partir da ideia">✨</button>
+      <button class="ico borda" id="btn-ideia" title="Gerar palavras-chave a partir da ideia" aria-label="Gerar palavras-chave"><svg><use href="#i-ideia"/></svg></button>
     </div>
   </label>
 
-  <div class="fila ideias" id="ideias-caixa" hidden>
-    <div class="fila-topo">
-      <span>Palavras-chave: <b id="ideias-n">0</b> marcada(s)</span>
-      <button id="btn-ideias-fila" class="add">＋ adicionar à fila</button>
+  <div class="caixa ideias" id="ideias-caixa" hidden>
+    <div class="caixa-topo">
+      <span><b id="ideias-n">0</b> marcada(s) · clique para marcar</span>
+      <button class="link" id="btn-ideias-fila">Adicionar à fila</button>
     </div>
     <div class="chips" id="ideias-chips"></div>
     <p class="nota" id="ideias-fonte"></p>
   </div>
 
-  <div class="fila" id="fila-caixa" hidden>
-    <div class="fila-topo">
-      <span>Fila: <b id="fila-n">0</b> termo(s)</span>
-      <button id="btn-limpar-fila">limpar</button>
+  <div class="caixa fila" id="fila-caixa" hidden>
+    <div class="caixa-topo">
+      <span>Fila: <b id="fila-n">0</b> termo(s) · clique para tirar</span>
+      <button class="link perigo" id="btn-limpar-fila">Limpar</button>
     </div>
     <div class="chips" id="fila-chips"></div>
   </div>
 
+  <!-- Estes dois cortam a COLETA: o que não passa nem é enviado. Os filtros da
+       grade só escondem da tela — daí o nome diferente. -->
+  <div class="secao-rot">Corte da coleta <span class="dica">o que não passar não é enviado</span></div>
   <div class="grupo">
-    <div class="rot">Quantidade de anúncios <span class="i" title="Mínimo de anúncios ativos do anunciante (conta as variações do mesmo criativo). Quem tem menos não é enviado ao painel.">ⓘ</span></div>
+    <div class="sub-rot">Anúncios do anunciante, no mínimo <span class="i" title="Conta as variações do mesmo criativo. Também vale para a mesma oferta anunciada por várias páginas.">?</span></div>
     <div class="slider">
       <input type="range" id="min-ads" min="1" max="50" value="2">
       <input type="number" id="min-ads-n" min="1" max="50" value="2">
-      <span class="un">anúncios</span>
     </div>
   </div>
-
   <div class="grupo">
-    <div class="rot">Tempo de atividade <span class="i" title="Mínimo de dias que o anúncio já está rodando. O corte é feito na própria Biblioteca, então a coleta não gasta tempo com anúncio novo.">ⓘ</span></div>
+    <div class="sub-rot">Dias no ar, no mínimo <span class="i" title="O corte vai na própria Biblioteca: a coleta não gasta tempo com anúncio novo.">?</span></div>
     <div class="slider">
       <input type="range" id="min-dias" min="0" max="180" value="3">
       <input type="number" id="min-dias-n" min="0" max="365" value="3">
-      <span class="un">dias</span>
     </div>
   </div>
 
-  <button class="item" id="tg-filtro">⚙️ Configurações de filtro <span class="i">ⓘ</span></button>
+  <button class="btn forte cheio" id="btn-pesquisar">Pesquisar</button>
+  <button class="btn perigo cheio" id="btn-parar" hidden>Parar agora</button>
+  <p class="status" id="status" role="status"></p>
+
+  <div class="caixa auto-caixa">
+    <div class="caixa-topo"><span class="com-ico"><svg><use href="#i-robo"/></svg>Mineração automática</span>
+      <span class="i" title="Fica buscando sozinho, uma busca atrás da outra, com palavras-chave que costumam achar low ticket: as que já renderam no seu WaveMiner, datas comemorativas próximas e gatilhos como &quot;acesso imediato&quot;. Termo que nunca rende sai da fila.">?</span></div>
+    <div class="auto-linha">
+      <select id="auto-min" aria-label="Duração">
+        <option value="5">5 min</option>
+        <option value="10" selected>10 min</option>
+        <option value="15">15 min</option>
+        <option value="30">30 min</option>
+      </select>
+      <button class="btn" id="btn-auto">Minerar sozinho</button>
+    </div>
+  </div>
+
+  <button class="item" id="tg-filtro"><span>País, idioma e contagem</span><svg class="seta"><use href="#i-seta"/></svg></button>
   <div class="painel" id="painel-filtro" hidden>
     <label class="campo-inline">País
       <select id="pais">
@@ -121,21 +145,15 @@
     <label class="check"><input type="checkbox" id="usar-aba">
       Usar a busca já aberta (não navegar a aba)</label>
     <label class="check"><input type="checkbox" id="profunda">
-      Contar anúncios reais de cada anunciante
-      <span class="i" title="Abre uma aba extra e visita a página de cada anunciante, um por um. Demora e navega muito no Facebook.">ⓘ</span></label>
-    <p class="nota">A contagem real abre <b>uma aba extra</b> e passa por cada
-      anunciante. Sem ela, "anúncios ativos" é o que apareceu na busca.</p>
-    <label class="campo-inline">Máx. anunciantes varridos
+      Contar anúncios reais de cada anunciante</label>
+    <p class="nota">Abre uma aba extra e passa por cada anunciante. Sem isso,
+      "anúncios ativos" é o que apareceu na busca.</p>
+    <label class="campo-inline">Máx. anunciantes contados
       <input type="number" id="max-anunciantes" value="8" min="1" max="30">
     </label>
   </div>
 
-  <div class="item toggle-linha">
-    <label class="switch"><input type="checkbox" id="auto"><span></span></label>
-    <span>Salvar o que eu abrir na Biblioteca <span class="i" title="Desligado: abrir a Biblioteca não envia nada. Ligado: envia ao WaveMiner os anúncios que a página carregar, sem rolar a página.">ⓘ</span></span>
-  </div>
-
-  <button class="item" id="tg-pesquisa">⚙️ Configurações de pesquisa <span class="i">ⓘ</span></button>
+  <button class="item" id="tg-pesquisa"><span>Configurações de pesquisa</span><svg class="seta"><use href="#i-seta"/></svg></button>
   <div class="painel" id="painel-pesquisa" hidden>
     <label class="check"><input type="checkbox" id="painel-flutuante" checked>
       Painel flutuante dentro da Biblioteca</label>
@@ -147,14 +165,17 @@
       Abrir o painel web ao terminar a pesquisa</label>
     <label class="check"><input type="checkbox" id="ler-navegador">
       Ler páginas de venda pelo meu navegador
-      <span class="i" title="Muito site de oferta barra o servidor (403, anti-robô, página camuflada) e a oferta fica sem preço. Ligado, a extensão baixa essas páginas daqui, com o seu IP e sem enviar seus cookies, e manda o conteúdo para o WaveMiner analisar. O Chrome vai pedir permissão para ler qualquer site.">ⓘ</span></label>
+      <span class="i" title="Muito site de oferta barra o servidor (403, anti-robô, página camuflada) e a oferta fica sem preço. Ligado, a extensão baixa essas páginas daqui, com o seu IP e sem enviar seus cookies, e manda o conteúdo para o WaveMiner analisar. O Chrome vai pedir permissão para ler qualquer site.">?</span></label>
+    <label class="check"><input type="checkbox" id="auto">
+      Salvar o que eu abrir na Biblioteca
+      <span class="i" title="Desligado: abrir a Biblioteca não envia nada. Ligado: envia ao WaveMiner os anúncios que a página carregar, sem rolar a página.">?</span></label>
     <label class="campo-inline">Máx. anúncios coletados
       <input type="number" id="max-anuncios" value="150" min="10" max="500">
     </label>
     <label class="campo-inline">Tempo por pesquisa (s)
       <input type="number" id="timeout" value="300" min="30" max="1800">
     </label>
-    <label class="campo-inline">Rodadas sem novidade antes de parar
+    <label class="campo-inline">Rodadas sem novidade
       <input type="number" id="paradas" value="12" min="3" max="60">
     </label>
     <label class="campo-inline">Servidor
@@ -162,37 +183,23 @@
     </label>
   </div>
 
-  <button class="item" id="tg-sugestoes">✨ Sugestões de pesquisas <span class="i">ⓘ</span></button>
+  <button class="item" id="tg-sugestoes"><span>Sugestões de pesquisa</span><svg class="seta"><use href="#i-seta"/></svg></button>
   <div class="painel" id="painel-sugestoes" hidden>
     <div class="chips" id="chips"></div>
   </div>
 
-  <button class="primario" id="btn-pesquisar">▶ PESQUISAR</button>
-
-  <div class="auto-caixa">
-    <div class="rot">🤖 Mineração automática de low ticket
-      <span class="i" title="Fica buscando sozinho, uma busca atrás da outra, com palavras-chave que costumam achar low ticket (as que já renderam no seu WaveMiner, datas comemorativas próximas e gatilhos como &quot;acesso imediato&quot;, &quot;pagamento único&quot;). Tudo vai para o WaveMiner. Use o ■ PARAR para interromper.">ⓘ</span></div>
-    <div class="auto-linha">
-      <select id="auto-min">
-        <option value="5">5 min</option>
-        <option value="10" selected>10 min</option>
-        <option value="15">15 min</option>
-        <option value="30">30 min</option>
-      </select>
-      <button class="primario auto" id="btn-auto">▶ MINERAR SOZINHO</button>
-    </div>
-  </div>
-  <button class="item" id="btn-fotos" title="Visita na Biblioteca a página de cada anunciante sem foto e salva a capa (vídeo vira o quadro de capa). Não gasta usos.">🖼 Recuperar fotos que sumiram</button>
-  <label class="check" style="margin:-4px 0 10px 2px"><input type="checkbox" id="fotos-low" checked>
+  <button class="item" id="btn-fotos" title="Visita na Biblioteca a página de cada anunciante sem foto e salva a capa. Não gasta usos."><span class="com-ico"><svg><use href="#i-foto"/></svg>Recuperar fotos que sumiram</span></button>
+  <label class="check recuo"><input type="checkbox" id="fotos-low" checked>
     Só dos low ticket (até R$ 50 + checkout)</label>
-  <button class="primario perigo" id="btn-parar" hidden>■ PARAR AGORA</button>
-  <p class="status" id="status"></p>
 </section>
 
 <footer>
-  <span id="rodape">painel · biblioteca de anúncios</span>
+  <span id="usos-linha"><b id="usos">—</b> usos</span>
+  <button class="link" id="rodape">Painel web</button>
+  <button class="link" id="btn-sair">Sair</button>
 </footer>
 
+<script src="busca.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>

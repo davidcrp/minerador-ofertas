@@ -13,6 +13,11 @@
 
   const CSS = `
     :host { all: initial; }
+    /* \`all: initial\` também zera o display:none que o atributo hidden dá:
+       sem esta linha "Ver Biblioteca" não fechava nada, a grade ficava por cima
+       sem a classe que esconde a rolagem da página (duas barras) e parava de
+       repintar enquanto carregava. */
+    :host([hidden]) { display: none !important; }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
     .vg {
@@ -164,6 +169,7 @@
     .selo { padding: 2px 7px; border-radius: 6px; background: rgba(4, 6, 10, .84); color: #dfe7f0; font-size: 11px; font-weight: 600; }
     .selo.destaque { background: var(--azul); color: var(--azul-esc); font-weight: 700; }
     .selo.parado { background: #7f1d1d; color: #fff; }
+    .selo.barato { background: #0f3d24; color: #86efac; }
     .play {
       position: absolute; top: 50%; left: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px;
       border: 0; border-radius: 50%; background: rgba(4, 6, 10, .78); color: #fff; font-size: 15px;
@@ -188,6 +194,7 @@
     .vazio { max-width: 460px; margin: 11vh auto 0; text-align: center; color: var(--suave); }
     .vazio h2 { margin: 0 0 8px; color: var(--txt); font-size: 24px; letter-spacing: -.02em; }
     .mais { display: block; margin: 22px auto 0; }
+    .fim { margin: 14px 0 0; color: var(--fraco); font-size: 12px; text-align: center; }
     .hero { max-width: 780px; margin: 8vh auto 0; text-align: center; color: var(--suave); }
     .hero .onda { margin: 0 auto 16px; }
     .hero h2 { margin: 0 0 8px; color: var(--txt); font-size: 34px; line-height: 1.15; letter-spacing: -.025em; }
@@ -226,19 +233,9 @@
     ["apps", "Apps", "M7 3h10v18H7zM11 18h2"],
     ["semsite", "Sem site", "M9 15l6-6M10 6l1-1a4 4 0 0 1 6 6l-1 1M14 18l-1 1a4 4 0 0 1-6-6l1-1M4 4l16 16"],
   ];
-  // Termos de partida da tela inicial, voltados a oferta de entrada.
-  const CATEGORIAS = [
-    ["Renda extra", ["renda extra em casa", "trabalhe de casa", "ganhar dinheiro online", "vendas pelo celular", "afiliado iniciante"]],
-    ["Emagrecimento", ["secar barriga", "cardápio para emagrecer", "chá emagrecedor", "treino em casa", "receitas low carb"]],
-    ["Receitas e confeitaria", ["apostila de receitas", "bolo no pote", "doces para vender", "marmitas fit", "pão caseiro"]],
-    ["Artesanato", ["moldes de crochê", "curso de amigurumi", "costura para iniciantes", "laços de cabelo", "velas artesanais"]],
-    ["Educação infantil", ["atividades para imprimir", "alfabetização em casa", "kit pedagógico", "caderno de caligrafia", "jogos educativos"]],
-    ["Idiomas e concursos", ["inglês do zero", "espanhol para iniciantes", "apostila concurso", "mapas mentais", "resumos para prova"]],
-    ["Fé e espiritualidade", ["devocional diário", "estudo bíblico", "oração poderosa", "planner cristão", "salmos para imprimir"]],
-    ["Relacionamento", ["reconquistar o amor", "salvar o casamento", "autoestima feminina", "ansiedade e sono", "inteligência emocional"]],
-  ];
   const ORDENS = [
     ["variacoes", "Mais anúncios no criativo"], ["dias", "Mais dias no ar"],
+    ["preco", "Menor preço na copy"],
     ["recentes", "Mais recentes"], ["anunciante", "Anunciante com mais anúncios"],
   ];
   const ABAS = [["todos", "Todos"], ["video", "Vídeo"], ["imagem", "Imagem"], ["carrossel", "Carrossel"]];
@@ -271,14 +268,18 @@
   const termoUrl = params.get("q") || "";
   const paisUrl = params.get("country") || "";
   const emBusca = !!(termoUrl || params.get("view_all_page_id"));
+  const corteUrl = wmLerBusca(location.href);
+  let idiomaSalvo = "", paisSalvo = "";
 
   const filtros = { texto: "", minDias: 0, maxDias: null, minVar: 1, tipo: "todos",
-                    ordem: "variacoes", ocultos: [], anunciante: "", unicos: true };
-  const GUARDADOS = ["minDias", "minVar", "ordem", "ocultos", "unicos"];
+                    ordem: "variacoes", ocultos: [], anunciante: "", unicos: true, soLow: false };
+  const GUARDADOS = ["minDias", "minVar", "ordem", "ocultos", "unicos", "soLow"];
   let salvos = new Set();
   let verTodos = false;
   let carregando = false;
   let minerando = false;
+  let naTela = 0;            // cards na grade depois de filtro e agrupamento
+  let semNovidade = false;   // a última carga não trouxe nada: o fim da lista
 
   let host, raiz, grade;
   const cartoes = new Map();
@@ -308,7 +309,7 @@
         <header class="topo">
           <span class="marca">${onda(26)}<span>Wave<b>Miner</b></span></span>
           <form class="busca">
-            <select class="campo" id="pais" aria-label="País">${opcoes(PAISES, paisUrl || "BR")}</select>
+            <select class="campo" id="pais" aria-label="País">${opcoes(PAISES, paisUrl || paisSalvo || "BR")}</select>
             <input class="campo" id="termo" type="search" aria-label="Termo de busca"
                    placeholder='nicho, produto ou "frase exata"' value="${esc(termoUrl)}">
             <button class="btn" type="submit">Buscar</button>
@@ -317,7 +318,7 @@
           <button class="btn" id="fechar" title="Volta para a tela original da Biblioteca">Ver Biblioteca</button>
           <div class="estado" id="estado" role="status" hidden></div>
           <nav class="guias" id="guias" aria-label="Busca atual" hidden>
-            <div class="guia"><span class="num">${esc(paisUrl || "BR")}</span><span>${esc(termoUrl || "Anunciante")}</span><span class="num" id="guia-n"></span></div>
+            <div class="guia"><span class="num">${esc(paisUrl || "BR")}</span><span>${esc(termoUrl || "Anunciante")}</span>${corteUrl.minDias ? `<span class="num" title="A busca já vem cortada: só anúncios com ${corteUrl.minDias}+ dias no ar (Corte da coleta, no popup)">${corteUrl.minDias}+ dias</span>` : ""}${corteUrl.idioma ? `<span class="num" title="Idioma do anúncio">${esc(corteUrl.idioma)}</span>` : ""}<span class="num" id="guia-n"></span></div>
             <button class="ico" id="nova" title="Nova busca em outra aba" aria-label="Nova busca em outra aba">+</button>
           </nav>
         </header>
@@ -335,6 +336,9 @@
               <label class="rot" for="f-var">Variações do criativo</label>
               <span class="dica">Mínimo com o mesmo criativo</span>
               ${passo("f-var", 1, filtros.minVar, "")}
+            </div>
+            <div class="bloco">
+              <label class="check" title="Preço até R$ 50 escrito na copy, link direto para checkout de infoproduto (Kiwify, Hotmart…) ou palavras de oferta de entrada (ebook, acesso imediato, moldes…). Anúncio com preço acima de R$ 50 na copy fica de fora."><input id="f-low" type="checkbox"${filtros.soLow ? " checked" : ""}>Só cara de low ticket <span class="num" id="n-low"></span></label>
             </div>
             <div class="bloco">
               <label class="check"><input id="f-unicos" type="checkbox"${filtros.unicos ? " checked" : ""}>Juntar cópias do mesmo anúncio</label>
@@ -356,7 +360,8 @@
             </div>
             <div class="grade" id="grade"></div>
             <div class="vazio" id="vazio" hidden></div>
-            <button class="btn mais" id="mais" hidden title="Rola a Biblioteca para carregar mais anúncios. Não envia nada ao WaveMiner.">Carregar mais 30</button>
+            <button class="btn mais" id="mais" hidden title="Rola a Biblioteca para carregar mais anúncios. Não envia nada ao WaveMiner. Também carrega sozinho quando você chega ao fim da lista.">Carregar mais 30</button>
+            <p class="fim" id="fim" hidden></p>
           </main>
         </div>
       </div>`;
@@ -374,7 +379,7 @@
     raiz.querySelector(".busca").addEventListener("submit", (e) => {
       e.preventDefault();
       const termo = $("termo").value.trim();
-      if (termo) location.href = urlBusca(termo, $("pais").value);
+      if (termo) irPara(termo, $("pais").value);
     });
     $("fechar").onclick = () => chrome.storage.local.set({ visaoAtiva: false });
     $("minerar").onclick = minerar;
@@ -382,7 +387,7 @@
     $("nova").onclick = () => window.open("https://www.facebook.com/ads/library/", "_blank", "noopener");
     $("vazio").onclick = (e) => {
       const b = e.target.closest("button[data-termo]");
-      if (b) location.href = urlBusca(b.dataset.termo, $("pais").value);
+      if (b) irPara(b.dataset.termo, $("pais").value);
     };
     $("lado").addEventListener("click", (e) => {
       const b = e.target.closest("button[data-passo]");
@@ -400,6 +405,7 @@
     $("f-max").oninput = (e) => { filtros.maxDias = e.target.value === "" ? null : Number(e.target.value); pintar(); };
     $("f-var").oninput = (e) => { filtros.minVar = Number(e.target.value) || 1; guardarFiltros(); pintar(); };
     $("f-unicos").onchange = (e) => { filtros.unicos = e.target.checked; guardarFiltros(); pintar(); };
+    $("f-low").onchange = (e) => { filtros.soLow = e.target.checked; guardarFiltros(); pintar(); };
     $("ordem").onchange = (e) => { filtros.ordem = e.target.value; guardarFiltros(); pintar(); };
 
     $("abas").onclick = (e) => {
@@ -425,15 +431,14 @@
     grade.addEventListener("click", aoClicarCard);
   }
 
-  function urlBusca(termo, pais) {
-    // Aspas pedem a frase exata, igual na Biblioteca.
-    const exata = /^".+"$/.test(termo);
-    const p = new URLSearchParams({
-      active_status: "active", ad_type: "all", country: pais, is_targeted_country: "false",
-      media_type: "all", q: termo, search_type: exata ? "keyword_exact_phrase" : "keyword_unordered",
-      "sort_data[mode]": "total_impressions", "sort_data[direction]": "desc",
-    });
-    return "https://www.facebook.com/ads/library/?" + p;
+  // Mesma URL do popup e do minerador (busca.js): com o idioma e o corte de dias
+  // salvos. Sem isso a grade mostrava uma busca e "Minerar esta busca" coletava
+  // outra. País e termo ficam salvos para o popup abrir igual.
+  async function irPara(termo, pais) {
+    const s = await chrome.storage.local.get(WM_CHAVES_CONFIG);
+    const cfg = wmConfigPesquisa({ ...s, pais });
+    await chrome.storage.local.set({ pais, termo });
+    location.href = wmUrlBusca({ termo, pais, idioma: cfg.idioma, minDias: cfg.minDias });
   }
 
   // ---------------------------------------------------------------- filtros
@@ -444,6 +449,7 @@
     if (filtros.maxDias !== null && d > filtros.maxDias) return false;
     if ((a.variacoes || 1) < filtros.minVar) return false;
     if (filtros.ocultos.includes(categoria(a))) return false;
+    if (ignorar !== "low" && filtros.soLow && !a.low_copy) return false;
     if (ignorar !== "tipo" && filtros.tipo !== "todos" && tipoDe(a) !== filtros.tipo) return false;
     if (ignorar !== "anunciante" && filtros.anunciante && a.page_id !== filtros.anunciante) return false;
     if (filtros.texto) {
@@ -473,6 +479,8 @@
       variacoes: (x) => x.a.variacoes || 1,
       dias: (x) => diasRodando(x.a.start_date) ?? -1,
       recentes: (x) => x.a.start_date || 0,
+      // sem preço vai para o fim; com preço, o mais barato primeiro
+      preco: (x) => (x.a.valor_copy > 0 ? -x.a.valor_copy : -1e9),
       anunciante: (x) => porPagina.get(x.a.page_id)?.qtd || 0,
     }[filtros.ordem];
     // Empate decidido pelo id: a ordem não pode pular enquanto chegam anúncios.
@@ -497,6 +505,8 @@
     if (forte) el.classList.add("quente");
     const selos = [
       forte ? '<span class="selo destaque" title="30+ dias no ar e 5+ variações do criativo">Forte</span>' : "",
+      a.preco_copy ? `<span class="selo${a.low_copy ? " barato" : ""}" title="Preço escrito na copy">${esc(a.preco_copy)}</span>` : "",
+      a.gateway_link ? `<span class="selo barato" title="O anúncio leva direto ao checkout">${esc(a.gateway_link)}</span>` : "",
       tipo === "carrossel" ? `<span class="selo">Carrossel · ${a.n_cartoes}</span>` : "",
       a.is_active === false ? '<span class="selo parado">Inativo</span>' : "",
       '<span class="selo vg-copias" hidden></span>',
@@ -586,7 +596,7 @@
   function telaInicial() {
     return `${onda(56)}<h2>Qual nicho vamos garimpar?</h2>
       Busque acima ou comece por um termo. Nada é coletado até você pedir.
-      <div class="cats">${CATEGORIAS.map(([nome, termos]) => `<details>
+      <div class="cats">${wmSugestoes(raiz.getElementById("pais").value, idiomaSalvo).map(([nome, termos]) => `<details>
         <summary>${esc(nome)}<span class="num">${termos.length}</span></summary>
         <div class="chips">${termos.map((t) => `<button data-termo="${esc(t)}">${esc(t)}</button>`).join("")}</div>
       </details>`).join("")}</div>`;
@@ -614,6 +624,7 @@
     for (const a of todos) contagem.set(a.page_id, (contagem.get(a.page_id) || 0) + 1);
 
     const grupos = ordenar(agrupar(visiveis), porPagina);
+    naTela = grupos.length;
 
     // resumo
     const total = window.__minerador.total;
@@ -622,6 +633,8 @@
     $("total").innerHTML = total != null
       ? `<b>${mil(total)}</b> resultados<small>${mil(todos.length)} carregados · ${mil(paginas)} anunciantes · ${mil(grupos.length)} na tela${repetidos > 0 ? ` · ${mil(repetidos)} fora da tela` : ""}</small>`
       : `<b>${mil(grupos.length)}</b> na tela<small>${mil(todos.length)} carregados · ${mil(paginas)} anunciantes</small>`;
+
+    $("n-low").textContent = mil(todos.filter((a) => passa(a, "low") && a.low_copy).length);
 
     // abas
     const porTipo = { todos: 0, video: 0, imagem: 0, carrossel: 0 };
@@ -679,7 +692,13 @@
     $("guia-n").textContent = total != null ? mil(total) : "";
     $("mais").hidden = !emBusca || vazioTotal;
     $("mais").disabled = carregando || minerando;
-    $("mais").textContent = carregando ? "Carregando…" : "Carregar mais 30";
+    $("mais").textContent = carregando ? `Carregando… ${mil(todos.length)} carregados`
+      : semNovidade ? "Tentar carregar de novo" : "Carregar mais 30";
+    const acabou = total != null && todos.length >= total;
+    $("fim").hidden = !emBusca || vazioTotal || carregando || !(semNovidade || acabou);
+    $("fim").textContent = acabou ? "Todos os resultados desta busca já foram carregados."
+      : "A Biblioteca não entregou anúncios novos. Ela pode estar no fim da lista ou "
+        + "demorando — tente de novo em alguns segundos.";
     pintarMinerar();
   }
 
@@ -691,34 +710,52 @@
 
   // ---------------------------------------------------------------- ações
 
+  // "Mais 30" é mais 30 CARDS na tela. Contar anúncio cru fazia o botão parecer
+  // quebrado: 30 anúncios novos que eram cópias do mesmo criativo (ou barrados
+  // pelos filtros) viravam 2 ou 3 cards — ou nenhum.
   async function carregarMais() {
-    if (carregando) return;
+    if (carregando || minerando) return;
     carregando = true;
+    semNovidade = false;
+    const antes = window.__minerador.anuncios.size;
+    const alvo = naTela + 30;
     pintar();
     try {
       await rolarAteJuntar({
-        alvo: window.__minerador.anuncios.size + 30, timeoutMs: 60000, paradasMax: 6,
+        alvo,
+        // a contagem de cards só existe depois de pintar: pinta aqui mesmo
+        contar: () => { pintar(); return naTela; },
+        // Fim de lista com filtro apertado pode precisar de muitos anúncios
+        // crus para render 30 cards: teto de 2 minutos e 8 rodadas paradas.
+        timeoutMs: 120000, paradasMax: 8, gesto: false, faixa: false,
       });
     } finally {
       carregando = false;
+      semNovidade = window.__minerador.anuncios.size === antes;
       pintar();
     }
   }
 
-  // Mesmos padrões do popup, para o botão daqui e o de lá fazerem a mesma pesquisa.
+  // Chegou ao fim da grade? Carrega sozinho, uma vez por chegada. Não insiste
+  // quando a última carga voltou vazia — aí fica o botão para tentar de novo.
+  function ligarCargaAutomatica() {
+    const principal = raiz.getElementById("principal");
+    const mais = raiz.getElementById("mais");
+    new IntersectionObserver((itens) => {
+      if (!itens.some((i) => i.isIntersecting)) return;
+      if (host.hidden || mais.hidden || carregando || minerando || semNovidade) return;
+      carregarMais();
+    }, { root: principal, rootMargin: "0px 0px 600px 0px" }).observe(mais);
+  }
+
+  // Mesmo montador do popup (busca.js). País e termo vêm da busca aberta: é ela
+  // que você está vendo e é ela que vai ser minerada.
   async function configuracao() {
-    const s = await chrome.storage.local.get(["token", "idioma", "minAds", "minDias", "maxAnuncios",
-      "timeout", "paradas", "profunda", "maxAnunciantes", "abrirDashboard"]);
+    const s = await chrome.storage.local.get(["token", ...WM_CHAVES_CONFIG]);
     return {
       token: s.token,
-      cfg: {
-        termo: termoUrl, pais: params.get("country") || "BR", idioma: s.idioma || "",
-        minAnuncios: s.minAds ?? 2, minDias: s.minDias ?? 3,
-        maxAnuncios: (s.maxAnuncios == null || s.maxAnuncios === 60) ? 150 : s.maxAnuncios,
-        timeoutMs: (s.timeout ?? 300) * 1000, paradasMax: s.paradas ?? 12,
-        varreduraProfunda: !!s.profunda, maxAnunciantes: s.maxAnunciantes ?? 8,
-        usarAbaAtual: false, abrirDashboard: !!s.abrirDashboard,
-      },
+      cfg: wmConfigPesquisa({ ...s, pais: paisUrl || s.pais || "BR" },
+                            { termo: termoUrl, usarAbaAtual: false }),
     };
   }
 
@@ -761,13 +798,16 @@
   }
 
   async function iniciar() {
-    const s = await chrome.storage.local.get(["visaoAtiva", "visaoFiltros", "visaoSalvos", "status", "execucao"]);
+    const s = await chrome.storage.local.get(["visaoAtiva", "visaoFiltros", "visaoSalvos", "status", "execucao", "idioma", "pais"]);
     for (const k of GUARDADOS) if (s.visaoFiltros && s.visaoFiltros[k] !== undefined) filtros[k] = s.visaoFiltros[k];
     salvos = new Set(s.visaoSalvos || []);
+    idiomaSalvo = s.idioma || "";
+    paisSalvo = s.pais || "";
     lerExecucao(s.execucao);
 
     const quandoPronto = () => {
       montar();
+      ligarCargaAutomatica();
       mostrarGrade(s.visaoAtiva !== false);
       mostrarStatus(s.status);
       pintar();

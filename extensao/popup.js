@@ -28,27 +28,6 @@ if (typeof chrome === "undefined" || !chrome.storage) {
 const escHtml = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;")
   .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-const SUGESTOES_PT = [
-  "receitas fit", "planilha financeira", "ebook", "curso online", "método",
-  "artesanato", "crochê", "adestramento", "manual", "combo digital",
-  "pacote de", "aula ao vivo", "guia completo", "templates canva",
-];
-
-const SUGESTOES_ES = [
-  "recetas saludables", "plantilla excel", "ebook", "curso online", "método",
-  "manualidades", "crochet", "adiestramiento canino", "manual", "combo digital",
-  "pack de", "clase en vivo", "guía completa", "plantillas canva",
-  "bajar de peso", "ganar dinero desde casa",
-];
-
-// Mercados de língua espanhola — usados para escolher as sugestões de termo.
-const PAISES_ES = ["MX", "AR", "CO", "CL", "PE", "EC", "UY", "ES"];
-
-function sugestoes(s) {
-  const es = s.idioma === "es" || (!s.idioma && PAISES_ES.includes(s.pais || "BR"));
-  return es ? SUGESTOES_ES : SUGESTOES_PT;
-}
-
 // ------------------------------------------------------------------ estado
 
 async function ler() {
@@ -70,11 +49,12 @@ async function mostrar() {
   const logado = !!s.token;
   $("#tela-login").hidden = logado;
   $("#tela-main").hidden = !logado;
+  document.querySelector("footer").hidden = !logado;
 
   $("#login-api").value = s.apiUrl || PADRAO_API;
   if (!logado) return;
 
-  $("#usos").textContent = s.usos ?? "—";
+  mostrarUsos(s.usos);
   $("#termo").value = s.termo || "";
   $("#auto").checked = !!s.capturaPassiva;
   $("#pais").value = s.pais || "BR";
@@ -85,6 +65,7 @@ async function mostrar() {
   pintarIdeias(s.ideiasTermos || [], s.ideiasFonte, s.ideiasGrupos, s.ideiasInterp);
   $("#profunda").checked = !!s.profunda;   // desligada por padrão: abre aba extra
   $("#abrir-sozinho").checked = s.abrirSozinho !== false;
+  travarAbrirSozinho(s.painelFlutuante !== false);
   $("#painel-flutuante").checked = s.painelFlutuante !== false;
   $("#visao-grade").checked = s.visaoAtiva !== false;
   $("#usar-aba").checked = !!s.usarAbaAtual;
@@ -127,7 +108,7 @@ async function atualizarUsos() {
     });
     if (r.status === 401) { await chrome.storage.local.remove("token"); return mostrar(); }
     const j = await r.json();
-    $("#usos").textContent = j.usos_restantes;
+    mostrarUsos(j.usos_restantes);
     await chrome.storage.local.set({ usos: j.usos_restantes });
   } catch (e) {
     $("#status").textContent = "Servidor offline (" + apiUrl(s) + ")";
@@ -183,11 +164,14 @@ for (const [botao, painel] of [
   ["#tg-pesquisa", "#painel-pesquisa"],
   ["#tg-sugestoes", "#painel-sugestoes"],
 ]) {
-  $(botao).onclick = () => { $(painel).hidden = !$(painel).hidden; };
+  $(botao).onclick = () => abrirSecao(botao, painel);
 }
 
+// Mesmas sugestões da tela inicial da grade (busca.js), agrupadas por tema.
 function pintarChips(s) {
-  $("#chips").innerHTML = sugestoes(s).map((t) => `<button>${escHtml(t)}</button>`).join("");
+  $("#chips").innerHTML = wmSugestoes(s.pais, s.idioma).map(([tema, termos]) =>
+    `<div class="tema"><div class="tema-nome">${escHtml(tema)}</div><div class="chips">`
+    + termos.map((t) => `<button>${escHtml(t)}</button>`).join("") + "</div></div>").join("");
 }
 
 $("#chips").onclick = (e) => {
@@ -195,6 +179,12 @@ $("#chips").onclick = (e) => {
   $("#termo").value = e.target.textContent;
   chrome.storage.local.set({ termo: e.target.textContent });
 };
+
+chrome.storage.onChanged && chrome.storage.onChanged.addListener((mud, area) => {
+  if (area !== "local") return;
+  if (mud.pais) { $("#pais").value = mud.pais.newValue || "BR"; ler().then(pintarChips); }
+  if (mud.termo && document.activeElement !== $("#termo")) $("#termo").value = mud.termo.newValue || "";
+});
 
 $("#termo").oninput = (e) => {
   chrome.storage.local.set({ termo: e.target.value });
@@ -229,8 +219,16 @@ $("#ler-navegador").onchange = async (e) => {
   e.target.checked = ligar;
   chrome.storage.local.set({ lerNoNavegador: ligar });
 };
-$("#painel-flutuante").onchange = (e) =>
+$("#painel-flutuante").onchange = (e) => {
   chrome.storage.local.set({ painelFlutuante: e.target.checked });
+  travarAbrirSozinho(e.target.checked);
+};
+function travarAbrirSozinho(painel) {
+  $("#abrir-sozinho").disabled = painel;
+  $("#abrir-sozinho").parentElement.title = painel
+    ? "Com o painel flutuante ligado a extensão já aparece dentro da Biblioteca." : "";
+  $("#abrir-sozinho").parentElement.style.opacity = painel ? ".5" : "";
+}
 $("#max-anunciantes").oninput = (e) => chrome.storage.local.set({ maxAnunciantes: Number(e.target.value) });
 $("#max-anuncios").oninput = (e) => chrome.storage.local.set({ maxAnuncios: Number(e.target.value) });
 $("#timeout").oninput = (e) => chrome.storage.local.set({ timeout: Number(e.target.value) });
@@ -244,11 +242,25 @@ $("#ir-dashboard").onclick = async () => {
   const s = await ler();
   chrome.tabs.create({ url: apiUrl(s) + "/" });
 };
-$("#ir-config").onclick = () => { $("#painel-pesquisa").hidden = !$("#painel-pesquisa").hidden; };
-$("#btn-planos").onclick = async () => {
-  const s = await ler();
-  chrome.tabs.create({ url: apiUrl(s) + "/#planos" });
+$("#ir-config").onclick = () => {
+  abrirSecao("#tg-pesquisa", "#painel-pesquisa");
+  $("#tg-pesquisa").scrollIntoView({ block: "start", behavior: "smooth" });
 };
+
+// A seta da seção gira junto: sem isso o painel abria e fechava sem pista.
+function abrirSecao(botao, painel, abrir) {
+  const ver = abrir ?? $(painel).hidden;
+  $(painel).hidden = !ver;
+  $(botao).setAttribute("aria-expanded", String(ver));
+}
+
+// Plano admin vem com 999999: número grande assim é "sem limite", não meta.
+function mostrarUsos(n) {
+  const v = Number(n);
+  $("#usos").textContent = n == null || n === "" ? "—" : (v >= 99999 ? "ilimitado" : v);
+  $("#usos-linha").title = v >= 99999 ? "Plano sem limite de usos" : "Cada pesquisa gasta 1 uso";
+  $("#usos-linha").lastChild.textContent = v >= 99999 ? "" : " usos";
+}
 $("#rodape").onclick = async () => {
   const s = await ler();
   chrome.tabs.create({ url: apiUrl(s) + "/" });
@@ -271,7 +283,7 @@ async function atualizarBotao(fila) {
   const digitado = $("#termo").value.trim();
   const total = fila.length + (digitado ? 1 : 0);
   $("#btn-pesquisar").textContent = total > 1
-    ? `▶ PESQUISAR ${total} TERMOS` : "▶ PESQUISAR";
+    ? `Pesquisar ${total} termos` : "Pesquisar";
   $("#btn-pesquisar").title = total > 1
     ? "Roda em sequência: " + [...fila, ...(digitado ? [digitado] : [])].join(" · ")
     : "";
@@ -335,7 +347,7 @@ async function gerarIdeias() {
   if (!ideia) { estado("Escreva uma ideia, ex: produtos para o natal.", true); return; }
   const s = await ler();
   const pais = $("#pais").value;
-  const idioma = $("#idioma").value || (PAISES_ES.includes(pais) ? "es" : "pt");
+  const idioma = wmIdiomaDe(pais, $("#idioma").value);
   $("#btn-ideia").disabled = true;
   estado("Gerando palavras-chave…");
   try {
@@ -377,26 +389,21 @@ $("#btn-ideias-fila").onclick = async () => {
   const fila = await mudarFila((f) => [...f, ...marcados.filter((t) => !f.includes(t))]);
   $("#ideias-caixa").hidden = true;
   await chrome.storage.local.set({ ideiasTermos: [], ideiasGrupos: [] });
-  estado(`${marcados.length} na fila (${fila.length} no total). Clique em PESQUISAR.`);
+  estado(`${marcados.length} na fila (${fila.length} no total). Clique em Pesquisar.`);
 };
 
 // ------------------------------------------------------------------ pesquisa
 
+// Mesmo montador da grade (busca.js): os dois botões fazem a mesma pesquisa.
 function configuracao(extra) {
-  return {
-    pais: $("#pais").value,
-    idioma: $("#idioma").value,
-    minAnuncios: Number($("#min-ads-n").value || 1),
-    minDias: Number($("#min-dias-n").value || 0),
-    maxAnuncios: Number($("#max-anuncios").value || 150),
-    timeoutMs: Number($("#timeout").value || 300) * 1000,
-    paradasMax: Number($("#paradas").value || 12),
-    varreduraProfunda: $("#profunda").checked,
-    maxAnunciantes: Number($("#max-anunciantes").value || 8),
-    usarAbaAtual: $("#usar-aba").checked,
+  return wmConfigPesquisa({
+    pais: $("#pais").value, idioma: $("#idioma").value,
+    minAds: $("#min-ads-n").value, minDias: $("#min-dias-n").value,
+    maxAnuncios: $("#max-anuncios").value, timeout: $("#timeout").value,
+    paradas: $("#paradas").value, profunda: $("#profunda").checked,
+    maxAnunciantes: $("#max-anunciantes").value, usarAbaAtual: $("#usar-aba").checked,
     abrirDashboard: $("#abrir-painel").checked,
-    ...extra,
-  };
+  }, extra);
 }
 
 $("#btn-pesquisar").onclick = async () => {
