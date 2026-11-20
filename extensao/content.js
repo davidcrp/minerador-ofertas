@@ -147,6 +147,46 @@ function primeiro(snap, campos) {
   return "";
 }
 
+// ------------------------------------------------------------------ cara de low ticket
+
+// Sinal que dá para ler NA HORA, só com o anúncio — sem esperar o servidor
+// visitar o site. Serve para a grade separar oferta de entrada do resto e para
+// a barra mostrar o preço da copy. A palavra final continua sendo do servidor.
+const LOW_TETO = 50;
+const RE_PRECO_COPY = /R\$\s?(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:,\d{1,2})?)/gi;
+// "12x de R$ 9,70", "de R$ 97 por", "era R$", "economize R$"
+const RE_ANTES_NAO_PRECO = /(\d+\s*x\s*(de)?|\bparcelas?\s*de|\bde|\bera|\bantes|economi\w*|desconto\s+de|ganh\w*|fatur\w*|lucr\w*|rend\w*|receb\w*|at[eé]|mais\s+de)\s*$/i;
+// "R$ 300 por dia", "R$ 10 OFF"
+const RE_DEPOIS_NAO_PRECO = /^\s*(off\b|de\s+desconto|(por|ao|\/)\s*(dia|m[eê]s|semana|hora))/i;
+const GATEWAYS_LOW = /(^|\.)(kiwify\.com(\.br)?|kiwify\.app|hotmart\.com|hotm\.art|eduzz\.com|monetizze\.com\.br|braip\.com|cakto\.com\.br|perfectpay\.com\.br|ticto\.(com\.br|app)|kirvano\.com|greenn\.com\.br|lastlink\.com|hub\.la|hubla\.com\.br|doppus\.(com|app)|payt\.com\.br|ggcheckout\.(app|com|com\.br)|usepepper\.com\.br|mycartpanda\.com|pay\.yampi\.com\.br)$/i;
+const NOME_GATEWAY = (h) => (h.match(/(kiwify|hotmart|hotm|eduzz|monetizze|braip|cakto|perfectpay|ticto|kirvano|greenn|lastlink|hub|hubla|doppus|payt|ggcheckout|pepper|cartpanda|yampi)/i) || [""])[0]
+  .replace(/^hotm$/i, "hotmart").replace(/^hub$/i, "hubla").replace(/^./, (c) => c.toUpperCase());
+const RE_PALAVRAS_LOW = /acesso imediato|pagamento [úu]nico|e-?book|\bpdf\b|apostila|kit digital|moldes|planner|para imprimir|download|acesso vital[íi]cio|receba no (e-?mail|whats)|garantia de 7 dias|mini ?curso|material digital|arquivo digital|100% edit[áa]vel|acceso inmediato|pago [úu]nico/i;
+
+function lerValor(t) {
+  const n = Number(t.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+// { preco: "R$ 19,90", valor: 19.9, gateway: "Kiwify", low: true }
+function sinaisLow(texto, link) {
+  let melhor = null;
+  for (const m of texto.matchAll(RE_PRECO_COPY)) {
+    const antes = texto.slice(Math.max(0, m.index - 24), m.index);
+    const depois = texto.slice(m.index + m[0].length, m.index + m[0].length + 20);
+    if (RE_ANTES_NAO_PRECO.test(antes) || RE_DEPOIS_NAO_PRECO.test(depois)) continue;
+    const valor = lerValor(m[1]);
+    if (valor < 3 || valor > 5000) continue;
+    if (!melhor || valor < melhor.valor) melhor = { preco: "R$ " + m[1], valor };
+  }
+  let host = "";
+  try { host = new URL(link || "").hostname.replace(/^www\./, "").toLowerCase(); } catch (e) { /* sem link */ }
+  const gateway = GATEWAYS_LOW.test(host) ? NOME_GATEWAY(host) : "";
+  const valor = melhor ? melhor.valor : 0;
+  const low = valor > LOW_TETO ? false : (valor > 0 || !!gateway || RE_PALAVRAS_LOW.test(texto));
+  return { preco: melhor ? melhor.preco : "", valor, gateway, low };
+}
+
 function normalizar(bruto) {
   const snap = bruto.snapshot || {};
   let corpo = "";
@@ -174,6 +214,8 @@ function normalizar(bruto) {
 
   let plats = bruto.publisher_platform || snap.publisher_platform || [];
   if (typeof plats === "string") plats = [plats];
+  const sinal = sinaisLow([corpo, txt(snap.title), txt(snap.link_description), txt(snap.caption)]
+    .join(" \n "), snap.link_url || "");
 
   return {
     ad_archive_id: String(bruto.ad_archive_id || ""),
@@ -203,6 +245,11 @@ function normalizar(bruto) {
     avatar: snap.page_profile_picture_url || "",
     n_cartoes: cartoes.length,
     collation_id: String(bruto.collation_id || ""),
+    // leitura rápida da copy: o servidor confirma visitando o site
+    preco_copy: sinal.preco,
+    valor_copy: sinal.valor,
+    gateway_link: sinal.gateway,
+    low_copy: sinal.low,
   };
 }
 

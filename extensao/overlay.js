@@ -214,6 +214,7 @@ function montarBarra(id, cartao) {
     <button class="mn-btn" data-mn="salvar" title="Salvar este anúncio no WaveMiner">${ICONES.salvar}</button>
     <button class="mn-btn" data-mn="painel" title="Abrir o painel">${ICONES.painel}</button>
     <span class="mn-tempo" hidden></span>
+    <span class="mn-tempo mn-preco" hidden></span>
     <div class="mn-menu"></div>`;
 
   // Quanto tempo este anúncio já roda: a Biblioteca mostra a data de início,
@@ -226,6 +227,14 @@ function montarBarra(id, cartao) {
     selo.textContent = tempoRodando(anuncio);
     selo.title = `no ar desde ${data(anuncio.start_date)}`;
     selo.classList.toggle("mn-veterano", d >= 60);
+  }
+  // Preço que a própria copy anuncia e/ou checkout de infoproduto no link.
+  const preco = barra.querySelector(".mn-preco");
+  if (anuncio && (anuncio.preco_copy || anuncio.gateway_link)) {
+    preco.hidden = false;
+    preco.textContent = [anuncio.preco_copy, anuncio.gateway_link].filter(Boolean).join(" · ");
+    preco.title = "Lido da copy e do link do anúncio — o WaveMiner confirma visitando o site";
+    preco.classList.toggle("mn-barato", !!anuncio.low_copy);
   }
 
   const menu = barra.querySelector(".mn-menu");

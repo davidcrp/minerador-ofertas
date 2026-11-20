@@ -8,6 +8,12 @@ sem duplicar quando a cota do banco antigo voltar.
 
 from __future__ import annotations
 
+import os as _os
+import sys as _sys
+
+# roda de dentro de manutencao/: os módulos do app moram uma pasta acima
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 import re
 import sys
 from urllib.parse import quote_plus

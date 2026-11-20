@@ -169,6 +169,7 @@
     .selo { padding: 2px 7px; border-radius: 6px; background: rgba(4, 6, 10, .84); color: #dfe7f0; font-size: 11px; font-weight: 600; }
     .selo.destaque { background: var(--azul); color: var(--azul-esc); font-weight: 700; }
     .selo.parado { background: #7f1d1d; color: #fff; }
+    .selo.barato { background: #0f3d24; color: #86efac; }
     .play {
       position: absolute; top: 50%; left: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px;
       border: 0; border-radius: 50%; background: rgba(4, 6, 10, .78); color: #fff; font-size: 15px;
@@ -245,6 +246,7 @@
   ];
   const ORDENS = [
     ["variacoes", "Mais anúncios no criativo"], ["dias", "Mais dias no ar"],
+    ["preco", "Menor preço na copy"],
     ["recentes", "Mais recentes"], ["anunciante", "Anunciante com mais anúncios"],
   ];
   const ABAS = [["todos", "Todos"], ["video", "Vídeo"], ["imagem", "Imagem"], ["carrossel", "Carrossel"]];
@@ -279,8 +281,8 @@
   const emBusca = !!(termoUrl || params.get("view_all_page_id"));
 
   const filtros = { texto: "", minDias: 0, maxDias: null, minVar: 1, tipo: "todos",
-                    ordem: "variacoes", ocultos: [], anunciante: "", unicos: true };
-  const GUARDADOS = ["minDias", "minVar", "ordem", "ocultos", "unicos"];
+                    ordem: "variacoes", ocultos: [], anunciante: "", unicos: true, soLow: false };
+  const GUARDADOS = ["minDias", "minVar", "ordem", "ocultos", "unicos", "soLow"];
   let salvos = new Set();
   let verTodos = false;
   let carregando = false;
@@ -343,6 +345,9 @@
               <label class="rot" for="f-var">Variações do criativo</label>
               <span class="dica">Mínimo com o mesmo criativo</span>
               ${passo("f-var", 1, filtros.minVar, "")}
+            </div>
+            <div class="bloco">
+              <label class="check" title="Preço até R$ 50 escrito na copy, link direto para checkout de infoproduto (Kiwify, Hotmart…) ou palavras de oferta de entrada (ebook, acesso imediato, moldes…). Anúncio com preço acima de R$ 50 na copy fica de fora."><input id="f-low" type="checkbox"${filtros.soLow ? " checked" : ""}>Só cara de low ticket <span class="num" id="n-low"></span></label>
             </div>
             <div class="bloco">
               <label class="check"><input id="f-unicos" type="checkbox"${filtros.unicos ? " checked" : ""}>Juntar cópias do mesmo anúncio</label>
@@ -409,6 +414,7 @@
     $("f-max").oninput = (e) => { filtros.maxDias = e.target.value === "" ? null : Number(e.target.value); pintar(); };
     $("f-var").oninput = (e) => { filtros.minVar = Number(e.target.value) || 1; guardarFiltros(); pintar(); };
     $("f-unicos").onchange = (e) => { filtros.unicos = e.target.checked; guardarFiltros(); pintar(); };
+    $("f-low").onchange = (e) => { filtros.soLow = e.target.checked; guardarFiltros(); pintar(); };
     $("ordem").onchange = (e) => { filtros.ordem = e.target.value; guardarFiltros(); pintar(); };
 
     $("abas").onclick = (e) => {
@@ -453,6 +459,7 @@
     if (filtros.maxDias !== null && d > filtros.maxDias) return false;
     if ((a.variacoes || 1) < filtros.minVar) return false;
     if (filtros.ocultos.includes(categoria(a))) return false;
+    if (ignorar !== "low" && filtros.soLow && !a.low_copy) return false;
     if (ignorar !== "tipo" && filtros.tipo !== "todos" && tipoDe(a) !== filtros.tipo) return false;
     if (ignorar !== "anunciante" && filtros.anunciante && a.page_id !== filtros.anunciante) return false;
     if (filtros.texto) {
@@ -482,6 +489,8 @@
       variacoes: (x) => x.a.variacoes || 1,
       dias: (x) => diasRodando(x.a.start_date) ?? -1,
       recentes: (x) => x.a.start_date || 0,
+      // sem preço vai para o fim; com preço, o mais barato primeiro
+      preco: (x) => (x.a.valor_copy > 0 ? -x.a.valor_copy : -1e9),
       anunciante: (x) => porPagina.get(x.a.page_id)?.qtd || 0,
     }[filtros.ordem];
     // Empate decidido pelo id: a ordem não pode pular enquanto chegam anúncios.
@@ -506,6 +515,8 @@
     if (forte) el.classList.add("quente");
     const selos = [
       forte ? '<span class="selo destaque" title="30+ dias no ar e 5+ variações do criativo">Forte</span>' : "",
+      a.preco_copy ? `<span class="selo${a.low_copy ? " barato" : ""}" title="Preço escrito na copy">${esc(a.preco_copy)}</span>` : "",
+      a.gateway_link ? `<span class="selo barato" title="O anúncio leva direto ao checkout">${esc(a.gateway_link)}</span>` : "",
       tipo === "carrossel" ? `<span class="selo">Carrossel · ${a.n_cartoes}</span>` : "",
       a.is_active === false ? '<span class="selo parado">Inativo</span>' : "",
       '<span class="selo vg-copias" hidden></span>',
@@ -632,6 +643,8 @@
     $("total").innerHTML = total != null
       ? `<b>${mil(total)}</b> resultados<small>${mil(todos.length)} carregados · ${mil(paginas)} anunciantes · ${mil(grupos.length)} na tela${repetidos > 0 ? ` · ${mil(repetidos)} fora da tela` : ""}</small>`
       : `<b>${mil(grupos.length)}</b> na tela<small>${mil(todos.length)} carregados · ${mil(paginas)} anunciantes</small>`;
+
+    $("n-low").textContent = mil(todos.filter((a) => passa(a, "low") && a.low_copy).length);
 
     // abas
     const porTipo = { todos: 0, video: 0, imagem: 0, carrossel: 0 };

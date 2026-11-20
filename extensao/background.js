@@ -511,7 +511,9 @@ async function pesquisar(p) {
     // lote curto agora, o resto no fim da fila.
     await moerMidias(r.midias_pendentes, p.emFila ? 12 : 60);
 
-    await status(`Pronto: ${r.novos} novos de ${r.recebidos} com cara de low ticket`
+    const caraLow = lista.filter((a) => a.low_copy).length;
+    await status(`Pronto: ${r.novos} novos de ${r.recebidos} enviados`
+      + (caraLow ? `, ${caraLow} com preço baixo ou checkout na copy` : "")
       + ` (${coletados - comLink.length} sem link de venda`
       + (fracos ? `, ${fracos} de anunciante com menos de ${minAds} anúncios` : "")
       + ` descartados).`

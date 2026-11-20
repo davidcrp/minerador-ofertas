@@ -85,6 +85,7 @@ async function mostrar() {
   pintarIdeias(s.ideiasTermos || [], s.ideiasFonte, s.ideiasGrupos, s.ideiasInterp);
   $("#profunda").checked = !!s.profunda;   // desligada por padrão: abre aba extra
   $("#abrir-sozinho").checked = s.abrirSozinho !== false;
+  travarAbrirSozinho(s.painelFlutuante !== false);
   $("#painel-flutuante").checked = s.painelFlutuante !== false;
   $("#visao-grade").checked = s.visaoAtiva !== false;
   $("#usar-aba").checked = !!s.usarAbaAtual;
@@ -229,8 +230,16 @@ $("#ler-navegador").onchange = async (e) => {
   e.target.checked = ligar;
   chrome.storage.local.set({ lerNoNavegador: ligar });
 };
-$("#painel-flutuante").onchange = (e) =>
+$("#painel-flutuante").onchange = (e) => {
   chrome.storage.local.set({ painelFlutuante: e.target.checked });
+  travarAbrirSozinho(e.target.checked);
+};
+function travarAbrirSozinho(painel) {
+  $("#abrir-sozinho").disabled = painel;
+  $("#abrir-sozinho").parentElement.title = painel
+    ? "Com o painel flutuante ligado a extensão já aparece dentro da Biblioteca." : "";
+  $("#abrir-sozinho").parentElement.style.opacity = painel ? ".5" : "";
+}
 $("#max-anunciantes").oninput = (e) => chrome.storage.local.set({ maxAnunciantes: Number(e.target.value) });
 $("#max-anuncios").oninput = (e) => chrome.storage.local.set({ maxAnuncios: Number(e.target.value) });
 $("#timeout").oninput = (e) => chrome.storage.local.set({ timeout: Number(e.target.value) });
@@ -245,10 +254,6 @@ $("#ir-dashboard").onclick = async () => {
   chrome.tabs.create({ url: apiUrl(s) + "/" });
 };
 $("#ir-config").onclick = () => { $("#painel-pesquisa").hidden = !$("#painel-pesquisa").hidden; };
-$("#btn-planos").onclick = async () => {
-  const s = await ler();
-  chrome.tabs.create({ url: apiUrl(s) + "/#planos" });
-};
 $("#rodape").onclick = async () => {
   const s = await ler();
   chrome.tabs.create({ url: apiUrl(s) + "/" });

@@ -551,6 +551,7 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
                a.end_date, a.dias_ativo, a.plataformas, a.cta_text, a.link_url, a.midia,
                a.midia_url, a.midia_poster, a.variacoes, a.termo, a.pais,
                EXTRACT(EPOCH FROM a.atualizado_em)::bigint AS visto_em,
+               EXTRACT(EPOCH FROM a.criado_em)::bigint AS coletado_em,
                d.url_final, d.dominio, d.gateway,
                d.checkout_url, d.preco, d.preco_valor, d.preco_moeda,
                d.imagem, d.status AS destino_status,
@@ -596,7 +597,11 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
             "imagem": "", "imagem_anuncio": "", "video": "", "poster": "",
             "pendente_enriquecimento": False,
             "visto_em": 0, "chaves": {}, "lidos": 0, "bloqueados": 0,
+            "coletado_em": None,
         })
+        if r["coletado_em"]:
+            item["coletado_em"] = (r["coletado_em"] if item["coletado_em"] is None
+                                   else min(item["coletado_em"], r["coletado_em"]))
         # `dias_ativo` é gravado na coleta e ficava congelado: anúncio coletado
         # há um mês mostrava a idade de um mês atrás. A idade sai da data de
         # início. Para "rodando há", o relógio para na última vez em que o
@@ -741,6 +746,8 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
                 "&search_type=page&media_type=all" if it["page_id"] else ""),
         }
         o["chave_oferta"] = maior(it["chaves"])
+        # entrou no minerador nas últimas 24h: o garimpo do dia
+        o["novo"] = bool(it["coletado_em"]) and agora - it["coletado_em"] < 86400
         # o servidor não conseguiu ler nenhum destino deste anunciante
         o["bloqueado"] = bool(it["bloqueados"]) and not it["lidos"]
         o["visto_ha"] = max(0, int((agora - (it["visto_em"] or agora)) // 86400))
@@ -775,6 +782,8 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
     # de checkout e destino que vende — perfil, app e WhatsApp ficam de fora.
     low = filtros.get("low") in ("1", "true", "on")
     agrupar = filtros.get("agrupar") in ("1", "true", "on")
+    sinais = {x for x in (filtros.get("sinal") or "").split(",")
+              if x in ("escalando", "crescendo", "rede", "novo")}
 
     def numero(chave):
         try:
@@ -819,6 +828,15 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
             return False
         if busca and busca not in " ".join(str(v) for v in i.values()).lower():
             return False
+        # sinais pedidos valem juntos (E): "escalando + em rede" é o mais forte
+        if "escalando" in sinais and not i["escalando"]:
+            return False
+        if "crescendo" in sinais and not i["crescendo"]:
+            return False
+        if "rede" in sinais and i["rede_paginas"] < 2:
+            return False
+        if "novo" in sinais and not i["novo"]:
+            return False
         return True
 
     total = len(saida)
@@ -839,15 +857,32 @@ def montar_ofertas(user_id: int, filtros, com_total: bool = False):
 
 
 def _anuncios_do_page(user_id: int, page_id: str) -> list[dict]:
+    """Anúncios de um anunciante, do mais novo para o mais velho. Colunas na
+    mão: `a.*` trazia campos internos e a URL de mídia crua (que expira)."""
     conn = get_db()
     rows = conn.execute("""
-        SELECT a.*, d.url_final, d.gateway, d.checkout_url, d.preco, d.dominio
-        FROM anuncios a LEFT JOIN destinos d ON d.url = a.link_url
+        SELECT a.ad_archive_id, a.page_name, a.is_active, a.start_date, a.variacoes,
+               a.cta_text, a.link_url, a.titulo, a.legenda, a.texto, a.midia, a.termo,
+               a.pais, a.plataformas, a.midia_poster,
+               d.url_final, d.gateway, d.checkout_url, d.preco, d.dominio, d.status AS destino_status,
+               m.poster_url
+        FROM anuncios a
+        LEFT JOIN destinos d ON d.url = a.link_url
+        LEFT JOIN midias m ON m.ad_archive_id = a.ad_archive_id
         WHERE a.user_id = %s AND a.page_id = %s AND a.excluido_em IS NULL
         ORDER BY a.start_date DESC NULLS LAST
+        LIMIT 200
     """, (user_id, page_id)).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    agora = time.time()
+    saida = []
+    for r in rows:
+        d = dict(r)
+        d["dias"] = max(0, int((agora - d["start_date"]) // 86400)) if d["start_date"] else None
+        d["capa"] = midia_viva(d.pop("poster_url") or "") or meta_viva(d.pop("midia_poster") or "")
+        d.pop("midia_poster", None)
+        saida.append(d)
+    return saida
 
 
 @app.get("/api/ofertas")
@@ -904,7 +939,10 @@ def dados_ofertas():
             "anunciantes": len(ofertas),
             "total": total,
             "anuncios": sum(o["anuncios_ativos"] for o in ofertas),
-            "com_gateway": sum(1 for o in ofertas if o["gateway"]),
+            "escalando": sum(1 for o in ofertas if o["escalando"]),
+            "crescendo": sum(1 for o in ofertas if o["crescendo"]),
+            "em_rede": sum(1 for o in ofertas if o["rede_paginas"] > 1),
+            "novos": sum(1 for o in ofertas if o["novo"]),
             "destinos_pendentes": enrich.pendentes(),
             "midias_pendentes": midias.pendentes(),
         },
@@ -1057,6 +1095,26 @@ def dados_favoritar():
         """, (g.user["id"], [o["page_name"] for o in ofertas]))
     conn.close()
     return jsonify({"ok": True, "salvos": len(ofertas)})
+
+
+@app.post("/dados/favoritos/nota")
+@precisa_sessao
+def dados_favorito_nota():
+    """Anotação livre num anunciante salvo ("testar com criativo X", "preço
+    subiu"). Só existe para quem está em Melhores."""
+    dados = request.get_json(silent=True) or {}
+    page_id = str(dados.get("page_id") or "")
+    nota = str(dados.get("nota") or "")[:2000]
+    if not page_id:
+        return jsonify({"erro": "page_id obrigatorio"}), 400
+    conn = get_db()
+    with conn:
+        n = conn.execute("UPDATE favoritos SET nota = %s WHERE user_id = %s AND page_id = %s",
+                         (nota, g.user["id"], page_id)).rowcount
+    conn.close()
+    if not n:
+        return jsonify({"erro": "salve o anunciante em Melhores antes de anotar"}), 404
+    return jsonify({"ok": True})
 
 
 @app.post("/dados/favoritos/remover")

@@ -97,6 +97,7 @@ html.wm-grade::-webkit-scrollbar { display: none; }
 /* 60 dias ou mais: oferta que aguenta escala, merece destaque. */
 .mn-tempo.mn-veterano { background: #0c2f5c; color: #93c5fd; }
 .mn-tempo[hidden] { display: none; }
+.mn-tempo.mn-barato { background: #0f3d24; color: #86efac; }
 
 /* Aviso curto de "copiado" — vive no body, fora do cartão. */
 .mn-aviso {
