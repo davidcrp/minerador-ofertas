@@ -36,7 +36,7 @@ async function ler() {
     "minAds", "minDias", "pais", "idioma", "profunda", "maxAnunciantes",
     "maxAnuncios", "timeout", "termo", "abrirSozinho", "painelFlutuante", "usarAbaAtual", "abrirDashboard", "fila", "paradas", "visaoAtiva",
     "ideia", "ideiasTermos", "ideiasFonte", "ideiasGrupos", "ideiasInterp",
-    "lerNoNavegador",
+    "lerNoNavegador", "buscaAberta",
   ]);
 }
 
@@ -82,6 +82,35 @@ async function mostrar() {
   par("min-dias", s.minDias ?? 3);
 
   atualizarUsos();
+  seguirBuscaAberta(s);
+}
+
+// O campo "Nicho" mostra a busca aberta na Biblioteca: é ela que você está
+// vendo e é ela que Pesquisar vai minerar. Dentro do painel flutuante a aba
+// avisa pelo storage (painel.js); no popup da barra, lê a aba ativa.
+const PRAZO_BUSCA = 30 * 60 * 1000;
+function aplicarBusca(b) {
+  if (!b || !b.termo || document.activeElement === $("#termo")) return;
+  $("#termo").value = b.termo;
+  const novo = { termo: b.termo };
+  if (b.pais && [...$("#pais").options].some((o) => o.value === b.pais)) {
+    $("#pais").value = b.pais;
+    novo.pais = b.pais;
+  }
+  chrome.storage.local.set(novo);
+  atualizarBotao();
+}
+
+async function seguirBuscaAberta(s) {
+  if (document.body.classList.contains("embutido")) {
+    const b = s.buscaAberta;
+    if (b && Date.now() - (b.em || 0) < PRAZO_BUSCA) aplicarBusca(b);
+    return;
+  }
+  try {
+    const [aba] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (aba && /facebook\.com\/ads\/library/.test(aba.url || "")) aplicarBusca(wmLerBusca(aba.url));
+  } catch (e) { /* sem aba ativa (pré-visualização fora do Chrome) */ }
 }
 
 // Slider e caixa numérica sempre com o mesmo valor.
@@ -184,6 +213,7 @@ chrome.storage.onChanged && chrome.storage.onChanged.addListener((mud, area) => 
   if (area !== "local") return;
   if (mud.pais) { $("#pais").value = mud.pais.newValue || "BR"; ler().then(pintarChips); }
   if (mud.termo && document.activeElement !== $("#termo")) $("#termo").value = mud.termo.newValue || "";
+  if (mud.buscaAberta && document.body.classList.contains("embutido")) aplicarBusca(mud.buscaAberta.newValue);
 });
 
 $("#termo").oninput = (e) => {

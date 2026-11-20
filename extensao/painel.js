@@ -211,10 +211,31 @@ function quandoTiverCorpo(fn) {
 
 // Só no frame de cima: dentro do próprio iframe do painel isto se montaria de
 // novo, e cada cópia criaria mais uma — recursão infinita.
+// A busca aberta nesta aba é a que o popup tem que mostrar. Sem isso o campo
+// "Nicho" guardava o último termo digitado nele: você navegava pela Biblioteca
+// (busca do Facebook, sugestão, link) e Pesquisar minerava o termo antigo.
+// A Biblioteca troca de busca sem recarregar, então confere a URL de tempos em
+// tempos. Só a aba visível anuncia — duas abas abertas não brigam.
+let mnpBuscaVista = "";
+function mnpAnunciarBusca() {
+  if (document.visibilityState !== "visible") return;
+  const b = wmLerBusca(location.href);
+  if (!b.termo) return;
+  const chave = `${b.termo}|${b.pais}`;
+  if (chave === mnpBuscaVista) return;
+  mnpBuscaVista = chave;
+  try {
+    chrome.storage.local.set({ buscaAberta: { termo: b.termo, pais: b.pais, em: Date.now() } });
+  } catch (e) { /* extensão recarregada: esta aba precisa de F5 */ }
+}
+
 if (window.top === window && !mnpEmContagem) {
   ler().then(({ ligado, geo }) => {
     if (ligado) quandoTiverCorpo(() => montar(geo));
   });
+  mnpAnunciarBusca();
+  setInterval(mnpAnunciarBusca, 1000);
+  document.addEventListener("visibilitychange", () => { mnpBuscaVista = ""; mnpAnunciarBusca(); });
 } else if (mnpEmContagem && window.top === window) {
   // Se você cair nesta aba, ela precisa dizer o que é: sem isso parece que a
   // extensão saiu pesquisando nomes aleatórios sozinha.
